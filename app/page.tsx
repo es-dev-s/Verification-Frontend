@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  confirmCase,
   createCase,
   deleteDocument,
   getCase,
   saveDraft,
+  setEngineeringTitledDegree,
   setSelectedDegreeLevels,
   setStoredCaseId,
   startRead,
@@ -28,6 +28,12 @@ import {
   type ExperienceRow,
   type FieldSource,
 } from "@/lib/types";
+import { CaseWizardLayout } from "@/components/wizard/CaseWizardLayout";
+import { Step2Confirmation } from "@/components/wizard/Step2Confirmation";
+import {
+  isEngineeringRelatedChecked,
+  type WizardStepId,
+} from "@/lib/wizard";
 
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,.docx,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -36,6 +42,7 @@ export default function Home() {
   const [caseId, setCaseId] = useState<string | null>(null);
   const [payload, setPayload] = useState<CasePayload | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [wizardStep, setWizardStep] = useState<WizardStepId>(1);
   const [selectedLevels, setSelectedLevels] = useState<DegreeLevel[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -43,6 +50,9 @@ export default function Home() {
     Partial<Record<DegreeLevel, Bachelors>>
   >({});
   const [experience, setExperience] = useState<ExperienceRow[]>([emptyExperience()]);
+  const [engineeringTitledDegree, setEngineeringTitledDegreeState] = useState<
+    boolean | null
+  >(null);
   const [fieldSources, setFieldSources] = useState<FieldSource[]>([]);
   const [fromCvOnlyByLevel, setFromCvOnlyByLevel] = useState<
     Partial<Record<DegreeLevel, boolean>>
@@ -91,6 +101,7 @@ export default function Home() {
       };
     }
     setQualifications(nextQuals);
+    setEngineeringTitledDegreeState(row.engineeringTitledDegree ?? null);
     if (row.experienceRows?.length) {
       setExperience(
         row.experienceRows.map((r) => ({
@@ -101,7 +112,8 @@ export default function Home() {
           end: r.end ?? "",
           statedDurationYears: r.statedDurationYears ?? null,
           domainSuggested: r.domainSuggested,
-          domainFinal: r.domainFinal ?? false,
+          domainFinal:
+            r.domainFinal ?? r.domainSuggested ?? null,
         })),
       );
     } else {
@@ -123,8 +135,10 @@ export default function Home() {
         setCaseId(created.id);
         setQualifications({});
         setExperience([emptyExperience()]);
+        setEngineeringTitledDegreeState(null);
         setFieldSources([]);
         setSelectedLevels([]);
+        setWizardStep(1);
         setEditedLevels({});
         setUserEditedExp(false);
         setFromCvOnlyByLevel({});
@@ -226,7 +240,10 @@ export default function Home() {
         start: r.start || null,
         end: r.end || null,
         statedDurationYears: r.statedDurationYears ?? null,
+        domainSuggested: r.domainSuggested ?? null,
+        domainFinal: r.domainFinal ?? null,
       })),
+      engineeringTitledDegree,
       fieldFinalEntries: fieldSources
         .filter((f) => f.degreeLevel)
         .map((f) => ({
@@ -235,7 +252,7 @@ export default function Home() {
           finalValue: f.finalValue,
         })),
     };
-  }, [selectedLevels, qualifications, experience, fieldSources]);
+  }, [selectedLevels, qualifications, experience, fieldSources, engineeringTitledDegree]);
 
   useEffect(() => {
     if (!caseId || !dirty) return;
@@ -495,7 +512,7 @@ export default function Home() {
           end: row.end ?? "",
           statedDurationYears: row.statedDurationYears ?? null,
           domainSuggested: row.domainSuggested,
-          domainFinal: row.domainFinal ?? row.domainSuggested ?? false,
+          domainFinal: row.domainFinal ?? row.domainSuggested ?? null,
         })),
       );
     } else {
@@ -504,15 +521,32 @@ export default function Home() {
     setDirty(true);
   }
 
-  async function onConfirm() {
+  async function goToStep2() {
+    // Existing Step 1 confirmation had no required-field validation — preserve that.
+    if (caseId) {
+      try {
+        await saveDraft(caseId, draftBody);
+        setDirty(false);
+      } catch {
+        // Still allow navigation; autosave may retry from Step 2 edits.
+      }
+    }
+    setWizardStep(2);
+    setSaveMsg(null);
+  }
+
+  async function onEngineeringTitledChange(value: boolean) {
+    setEngineeringTitledDegreeState(value);
+    setDirty(true);
     if (!caseId) return;
     try {
-      const row = await confirmCase(caseId, draftBody);
-      applyCase(row);
-      setSaveMsg("Confirmed");
-      setDirty(false);
+      await setEngineeringTitledDegree(caseId, value);
+      setPayload((prev) =>
+        prev ? { ...prev, engineeringTitledDegree: value } : prev,
+      );
+      setSaveMsg("Draft saved");
     } catch (err) {
-      setSaveMsg(err instanceof Error ? err.message : "Confirm failed");
+      setSaveMsg(err instanceof Error ? err.message : "Save failed");
     }
   }
 
@@ -565,14 +599,28 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-full bg-[radial-gradient(900px_420px_at_12%_-8%,#d7e4f0_0%,transparent_55%),radial-gradient(700px_380px_at_100%_0%,#e2ebe3_0%,transparent_50%),#eef2f6] px-4 py-10 sm:px-6">
-      <main className="mx-auto w-full max-w-2xl">
+    <CaseWizardLayout currentStep={wizardStep}>
+      {wizardStep === 2 ? (
+        <Step2Confirmation
+          selectedLevels={selectedLevels}
+          qualifications={qualifications}
+          experience={experience}
+          engineeringTitledDegree={engineeringTitledDegree}
+          saveMsg={saveMsg}
+          onEngineeringTitledChange={(v) => void onEngineeringTitledChange(v)}
+          onBack={() => {
+            setWizardStep(1);
+            setSaveMsg(null);
+          }}
+          onNextPlaceholder={() => {
+            setSaveMsg("Assessment step coming soon");
+          }}
+        />
+      ) : (
+    <div>
         <header className="mb-8">
-          <p className="mb-2 text-sm font-medium tracking-wide text-[#5f7388]">
-            Verification Engine
-          </p>
           <h1 className="text-[1.75rem] font-semibold tracking-tight text-[#1a2332]">
-            Case details
+            Upload &amp; details
           </h1>
           <p className="mt-2 max-w-md text-[0.95rem] leading-relaxed text-[#6b7a8d]">
             Select degree type(s), upload one CV, then add transcript and certificate
@@ -743,6 +791,24 @@ export default function Home() {
                     onChange={(v) => updateExperience(index, "end", v)}
                   />
                 </div>
+                <label className="mt-3 flex cursor-pointer items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-[#2c5f8a]"
+                    checked={isEngineeringRelatedChecked(row)}
+                    onChange={(e) =>
+                      updateExperience(index, "domainFinal", e.target.checked)
+                    }
+                  />
+                  <span className="text-sm text-[#1a2332]">
+                    Engineering-related role
+                    {row.domainSuggested != null ? (
+                      <span className="ml-1.5 text-xs text-[#6b7a8d]">
+                        (AI suggested: {row.domainSuggested ? "yes" : "no"})
+                      </span>
+                    ) : null}
+                  </span>
+                </label>
               </div>
             ))}
           </div>
@@ -762,14 +828,15 @@ export default function Home() {
         <div className="flex items-center justify-end gap-3">
           <button
             type="button"
-            onClick={() => void onConfirm()}
+            onClick={goToStep2}
             className="rounded-full bg-[#1a2332] px-5 py-2.5 text-sm font-medium text-white"
           >
-            Confirm
+            Next
           </button>
         </div>
-      </main>
     </div>
+      )}
+    </CaseWizardLayout>
   );
 }
 

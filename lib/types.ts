@@ -101,6 +101,7 @@ export type CasePayload = {
   targetOccupation: string | null;
   status: "DRAFT" | "CONFIRMED";
   selectedDegreeLevels: DegreeLevel[];
+  engineeringTitledDegree: boolean | null;
   documents: CaseDocument[];
   /** @deprecated Prefer qualifications — kept during multi-degree migration. */
   bachelors: Bachelors | null;
@@ -146,7 +147,7 @@ export function emptyExperience(): ExperienceRow {
     end: "",
     statedDurationYears: null,
     domainSuggested: null,
-    domainFinal: false,
+    domainFinal: null,
   };
 }
 

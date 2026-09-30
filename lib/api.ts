@@ -95,6 +95,16 @@ export async function setSelectedDegreeLevels(
   });
 }
 
+export async function setEngineeringTitledDegree(
+  caseId: string,
+  engineeringTitledDegree: boolean | null,
+): Promise<void> {
+  await api(`/cases/${caseId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ engineeringTitledDegree }),
+  });
+}
+
 export async function deleteDocument(
   caseId: string,
   docId: string,
