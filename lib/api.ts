@@ -1,4 +1,4 @@
-import type { CasePayload, DocumentType } from "./types";
+import type { CasePayload, DocumentType, DegreeLevel } from "./types";
 
 const API_URL = (
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"
@@ -67,13 +67,31 @@ export async function uploadDocument(
   caseId: string,
   type: DocumentType,
   file: File,
+  degreeLevel?: DegreeLevel | null,
 ): Promise<{ documentId: string }> {
   const form = new FormData();
   form.append("file", file);
   form.append("type", type);
-  return api(`/cases/${caseId}/documents?type=${encodeURIComponent(type)}`, {
+  if (type !== "CV" && degreeLevel) {
+    form.append("degreeLevel", degreeLevel);
+  }
+  const qs = new URLSearchParams({ type });
+  if (type !== "CV" && degreeLevel) {
+    qs.set("degreeLevel", degreeLevel);
+  }
+  return api(`/cases/${caseId}/documents?${qs.toString()}`, {
     method: "POST",
     body: form,
+  });
+}
+
+export async function setSelectedDegreeLevels(
+  caseId: string,
+  selectedDegreeLevels: DegreeLevel[],
+): Promise<void> {
+  await api(`/cases/${caseId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ selectedDegreeLevels }),
   });
 }
 
@@ -87,13 +105,21 @@ export async function deleteDocument(
 export async function startRead(
   caseId: string,
   section: "education" | "experience",
+  degreeLevel?: DegreeLevel | null,
 ): Promise<{
   jobId: string;
   status: string;
   cached?: boolean;
+  degreeLevel?: string;
   result?: unknown;
   error?: string;
 }> {
+  if (section === "education" && degreeLevel) {
+    return api(
+      `/cases/${caseId}/read/education/${encodeURIComponent(degreeLevel)}`,
+      { method: "POST" },
+    );
+  }
   return api(`/cases/${caseId}/read/${section}`, { method: "POST" });
 }
 

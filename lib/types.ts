@@ -1,11 +1,41 @@
 export type DocumentType = "CV" | "TRANSCRIPT" | "CERTIFICATE";
 export type DocumentStatus = "QUEUED" | "EXTRACTING" | "DONE" | "FAILED";
 export type DocumentFormat = "PDF" | "PNG" | "JPG" | "DOCX";
+export type DegreeLevel =
+  | "diploma"
+  | "advanced_diploma"
+  | "bachelor"
+  | "master"
+  | "phd";
+
+/** Display order for education blocks and upload sections (highest first). */
+export const DEGREE_LEVEL_ORDER: DegreeLevel[] = [
+  "phd",
+  "master",
+  "bachelor",
+  "advanced_diploma",
+  "diploma",
+];
+
+export const DEGREE_LEVEL_LABELS: Record<DegreeLevel, string> = {
+  phd: "PhD",
+  master: "Master's",
+  bachelor: "Bachelor's",
+  advanced_diploma: "Advanced Diploma",
+  diploma: "Diploma",
+};
+
+export function sortDegreeLevels(levels: DegreeLevel[]): DegreeLevel[] {
+  return [...levels].sort(
+    (a, b) => DEGREE_LEVEL_ORDER.indexOf(a) - DEGREE_LEVEL_ORDER.indexOf(b),
+  );
+}
 
 export type CaseDocument = {
   id: string;
   caseId: string;
   type: DocumentType;
+  degreeLevel: DegreeLevel | null;
   originalName: string;
   format: DocumentFormat;
   sha256: string;
@@ -47,6 +77,7 @@ export type Alternative = {
 export type FieldSource = {
   id: string;
   field: string;
+  degreeLevel?: DegreeLevel | null;
   sourceDocumentId: string | null;
   extractedValue: string | null;
   finalValue: string | null;
@@ -69,12 +100,25 @@ export type CasePayload = {
   clientId: string;
   targetOccupation: string | null;
   status: "DRAFT" | "CONFIRMED";
+  selectedDegreeLevels: DegreeLevel[];
   documents: CaseDocument[];
+  /** @deprecated Prefer qualifications — kept during multi-degree migration. */
   bachelors: Bachelors | null;
+  qualifications: Qualification[];
   experienceRows: ExperienceRow[];
   fieldSources: FieldSource[];
   readJobs: ReadJob[];
   draftJson?: unknown;
+};
+
+export type Qualification = {
+  id: string;
+  degreeLevel: DegreeLevel;
+  degreeTitle: string | null;
+  institution: string | null;
+  country: string | null;
+  durationYears: number | null;
+  durationCalculated: boolean;
 };
 
 export const UNCERTAIN_THRESHOLD = 0.7;
@@ -87,6 +131,11 @@ export function emptyBachelors(): Bachelors {
     durationYears: null,
     durationCalculated: false,
   };
+}
+
+/** Form-state helper for a qualification block (same fields as Bachelors). */
+export function emptyQualification(): Bachelors {
+  return emptyBachelors();
 }
 
 export function emptyExperience(): ExperienceRow {

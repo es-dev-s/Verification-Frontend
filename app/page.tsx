@@ -7,18 +7,23 @@ import {
   deleteDocument,
   getCase,
   saveDraft,
+  setSelectedDegreeLevels,
   setStoredCaseId,
   startRead,
   uploadDocument,
 } from "@/lib/api";
 import {
+  DEGREE_LEVEL_LABELS,
+  DEGREE_LEVEL_ORDER,
   UNCERTAIN_THRESHOLD,
-  emptyBachelors,
   emptyExperience,
+  emptyQualification,
+  sortDegreeLevels,
   sourceLabel,
   type Bachelors,
   type CaseDocument,
   type CasePayload,
+  type DegreeLevel,
   type DocumentType,
   type ExperienceRow,
   type FieldSource,
@@ -27,27 +32,34 @@ import {
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,.docx,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MAX_BYTES = 10 * 1024 * 1024;
 
-type UploadType = DocumentType;
-
 export default function Home() {
   const [caseId, setCaseId] = useState<string | null>(null);
   const [payload, setPayload] = useState<CasePayload | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
-  const [uploadType, setUploadType] = useState<UploadType>("CV");
+  const [selectedLevels, setSelectedLevels] = useState<DegreeLevel[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [bachelors, setBachelors] = useState<Bachelors>(emptyBachelors());
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [qualifications, setQualifications] = useState<
+    Partial<Record<DegreeLevel, Bachelors>>
+  >({});
   const [experience, setExperience] = useState<ExperienceRow[]>([emptyExperience()]);
   const [fieldSources, setFieldSources] = useState<FieldSource[]>([]);
-  const [fromCvOnly, setFromCvOnly] = useState(false);
-  const [eduReading, setEduReading] = useState(false);
+  const [fromCvOnlyByLevel, setFromCvOnlyByLevel] = useState<
+    Partial<Record<DegreeLevel, boolean>>
+  >({});
+  const [eduReadingLevel, setEduReadingLevel] = useState<DegreeLevel | null>(null);
   const [expReading, setExpReading] = useState(false);
-  const [eduError, setEduError] = useState<string | null>(null);
+  const [eduErrors, setEduErrors] = useState<Partial<Record<DegreeLevel, string>>>({});
   const [expError, setExpError] = useState<string | null>(null);
-  const [eduGeminiRaw, setEduGeminiRaw] = useState<unknown>(null);
+  const [eduGeminiRaws, setEduGeminiRaws] = useState<
+    Partial<Record<DegreeLevel, unknown>>
+  >({});
   const [expGeminiRaw, setExpGeminiRaw] = useState<unknown>(null);
   const [dirty, setDirty] = useState(false);
-  const [userEdited, setUserEdited] = useState(false);
+  const [editedLevels, setEditedLevels] = useState<Partial<Record<DegreeLevel, boolean>>>(
+    {},
+  );
+  const [userEditedExp, setUserEditedExp] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [staleHint, setStaleHint] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,15 +69,28 @@ export default function Home() {
 
   const applyCase = useCallback((row: CasePayload) => {
     setPayload(row);
-    if (row.bachelors) {
-      setBachelors({
+    setSelectedLevels(sortDegreeLevels(row.selectedDegreeLevels ?? []));
+    const nextQuals: Partial<Record<DegreeLevel, Bachelors>> = {};
+    for (const q of row.qualifications ?? []) {
+      nextQuals[q.degreeLevel] = {
+        degreeTitle: q.degreeTitle ?? "",
+        institution: q.institution ?? "",
+        country: q.country ?? "",
+        durationYears: q.durationYears,
+        durationCalculated: q.durationCalculated,
+      };
+    }
+    // Legacy bachelor-only payload
+    if (!Object.keys(nextQuals).length && row.bachelors) {
+      nextQuals.bachelor = {
         degreeTitle: row.bachelors.degreeTitle ?? "",
         institution: row.bachelors.institution ?? "",
         country: row.bachelors.country ?? "",
         durationYears: row.bachelors.durationYears,
         durationCalculated: row.bachelors.durationCalculated,
-      });
+      };
     }
+    setQualifications(nextQuals);
     if (row.experienceRows?.length) {
       setExperience(
         row.experienceRows.map((r) => ({
@@ -96,10 +121,15 @@ export default function Home() {
         if (cancelled) return;
         setStoredCaseId(created.id);
         setCaseId(created.id);
-        setBachelors(emptyBachelors());
+        setQualifications({});
         setExperience([emptyExperience()]);
         setFieldSources([]);
-        setUserEdited(false);
+        setSelectedLevels([]);
+        setEditedLevels({});
+        setUserEditedExp(false);
+        setFromCvOnlyByLevel({});
+        setEduGeminiRaws({});
+        setEduErrors({});
         setStaleHint(false);
         const row = await getCase(created.id);
         applyCase(row);
@@ -141,6 +171,7 @@ export default function Home() {
                 documents: row.documents,
                 readJobs: row.readJobs,
                 status: row.status,
+                selectedDegreeLevels: row.selectedDegreeLevels ?? prev.selectedDegreeLevels,
               }
             : row,
         );
@@ -163,14 +194,31 @@ export default function Home() {
     };
   }, [caseId]);
 
-  const draftBody = useMemo(
-    () => ({
-      bachelors: {
-        ...bachelors,
-        degreeTitle: bachelors.degreeTitle || null,
-        institution: bachelors.institution || null,
-        country: bachelors.country || null,
-      },
+  const draftBody = useMemo(() => {
+    const levels = sortDegreeLevels(selectedLevels);
+    const quals = levels.map((level) => {
+      const q = qualifications[level] ?? emptyQualification();
+      return {
+        degreeLevel: level,
+        degreeTitle: q.degreeTitle || null,
+        institution: q.institution || null,
+        country: q.country || null,
+        durationYears: q.durationYears,
+        durationCalculated: q.durationCalculated,
+      };
+    });
+    const bachelor = quals.find((q) => q.degreeLevel === "bachelor");
+    return {
+      qualifications: quals,
+      bachelors: bachelor
+        ? {
+            degreeTitle: bachelor.degreeTitle,
+            institution: bachelor.institution,
+            country: bachelor.country,
+            durationYears: bachelor.durationYears,
+            durationCalculated: bachelor.durationCalculated,
+          }
+        : undefined,
       experienceRows: experience.map((r) => ({
         ...r,
         employer: r.employer || null,
@@ -179,12 +227,15 @@ export default function Home() {
         end: r.end || null,
         statedDurationYears: r.statedDurationYears ?? null,
       })),
-      fieldFinals: Object.fromEntries(
-        fieldSources.map((f) => [f.field, f.finalValue]),
-      ),
-    }),
-    [bachelors, experience, fieldSources],
-  );
+      fieldFinalEntries: fieldSources
+        .filter((f) => f.degreeLevel)
+        .map((f) => ({
+          field: f.field,
+          degreeLevel: f.degreeLevel as DegreeLevel,
+          finalValue: f.finalValue,
+        })),
+    };
+  }, [selectedLevels, qualifications, experience, fieldSources]);
 
   useEffect(() => {
     if (!caseId || !dirty) return;
@@ -203,7 +254,11 @@ export default function Home() {
     };
   }, [caseId, dirty, draftBody]);
 
-  async function onUpload(fileList: FileList | null) {
+  async function onUpload(
+    fileList: FileList | null,
+    type: DocumentType,
+    degreeLevel?: DegreeLevel | null,
+  ) {
     if (!fileList?.length || !caseId) return;
     setUploadError(null);
     const file = fileList[0]!;
@@ -216,14 +271,54 @@ export default function Home() {
       setUploadError("Accepted formats: PDF, PNG, JPG, DOCX");
       return;
     }
-    setUploading(true);
+    if (type !== "CV" && !degreeLevel) {
+      setUploadError("Select a degree type before uploading transcript/certificate");
+      return;
+    }
+    const key = type === "CV" ? "CV" : `${type}:${degreeLevel}`;
+    setUploadingKey(key);
     try {
-      await uploadDocument(caseId, uploadType, file);
+      await uploadDocument(caseId, type, file, type === "CV" ? null : degreeLevel);
       await refreshCase();
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : String(err));
     } finally {
-      setUploading(false);
+      setUploadingKey(null);
+    }
+  }
+
+  async function onToggleDegreeLevel(level: DegreeLevel) {
+    if (!caseId) return;
+    const selected = selectedLevels.includes(level);
+    if (selected) {
+      const hasDocs = documents.some((d) => d.degreeLevel === level);
+      if (hasDocs) {
+        const ok = window.confirm(
+          `Hide ${DEGREE_LEVEL_LABELS[level]} uploads? Existing files for this level will be kept until you delete them.`,
+        );
+        if (!ok) return;
+      }
+    }
+    const previous = selectedLevels;
+    const next = sortDegreeLevels(
+      selected
+        ? selectedLevels.filter((l) => l !== level)
+        : [...selectedLevels, level],
+    );
+    setSelectedLevels(next);
+    setPayload((prev) =>
+      prev ? { ...prev, selectedDegreeLevels: next } : prev,
+    );
+    try {
+      await setSelectedDegreeLevels(caseId, next);
+      setUploadError(null);
+    } catch (err) {
+      // Revert optimistic UI only — avoid full refreshCase which can race the poller
+      setSelectedLevels(previous);
+      setPayload((prev) =>
+        prev ? { ...prev, selectedDegreeLevels: previous } : prev,
+      );
+      setUploadError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -233,53 +328,80 @@ export default function Home() {
     await refreshCase();
   }
 
-  const eduDocsReady = useMemo(() => {
-    const docs = documents.filter((d) =>
-      ["CV", "TRANSCRIPT", "CERTIFICATE"].includes(d.type),
-    );
-    if (!docs.length) return false;
-    return docs.every((d) => d.status === "DONE" || d.status === "FAILED") &&
-      docs.some((d) => d.status === "DONE");
-  }, [documents]);
-
-  const eduBlocked = documents.some(
-    (d) =>
-      ["CV", "TRANSCRIPT", "CERTIFICATE"].includes(d.type) &&
-      ["QUEUED", "EXTRACTING"].includes(d.status),
+  const cvDocs = useMemo(
+    () => documents.filter((d) => d.type === "CV"),
+    [documents],
   );
+
+  const visibleLevels = useMemo(
+    () => sortDegreeLevels(selectedLevels),
+    [selectedLevels],
+  );
+
+  function docsForLevel(level: DegreeLevel) {
+    return documents.filter((d) => {
+      if (d.type === "CV") return true;
+      if (d.type !== "TRANSCRIPT" && d.type !== "CERTIFICATE") return false;
+      if (d.degreeLevel === level) return true;
+      return level === "bachelor" && d.degreeLevel == null;
+    });
+  }
+
+  function levelEduReady(level: DegreeLevel) {
+    const docs = docsForLevel(level);
+    if (!docs.length) return false;
+    return (
+      docs.every((d) => d.status === "DONE" || d.status === "FAILED") &&
+      docs.some((d) => d.status === "DONE")
+    );
+  }
+
+  function levelEduBlocked(level: DegreeLevel) {
+    return docsForLevel(level).some((d) =>
+      ["QUEUED", "EXTRACTING"].includes(d.status),
+    );
+  }
 
   const cvReady = documents.some((d) => d.type === "CV" && d.status === "DONE");
   const cvBlocked = documents.some(
     (d) => d.type === "CV" && ["QUEUED", "EXTRACTING"].includes(d.status),
   );
 
-  async function onReadEducation() {
+  async function onReadEducation(degreeLevel: DegreeLevel) {
     if (!caseId) return;
-    if (userEdited) {
+    if (editedLevels[degreeLevel]) {
       const ok = window.confirm(
-        "Read again will replace fields you edited. Continue?",
+        `Read again will replace ${DEGREE_LEVEL_LABELS[degreeLevel]} fields you edited. Continue?`,
       );
       if (!ok) return;
     }
-    setEduError(null);
-    setEduReading(true);
+    setEduErrors((prev) => {
+      const next = { ...prev };
+      delete next[degreeLevel];
+      return next;
+    });
+    setEduReadingLevel(degreeLevel);
     try {
-      const started = await startRead(caseId, "education");
+      const started = await startRead(caseId, "education", degreeLevel);
       if (started.status === "FAILED" || !started.result) {
         throw new Error(started.error ?? "Read failed");
       }
-      applyEducationResult(started.result);
+      applyEducationResult(degreeLevel, started.result);
       await refreshCase();
-      setUserEdited(false);
+      setEditedLevels((prev) => ({ ...prev, [degreeLevel]: false }));
     } catch (err) {
-      setEduError(err instanceof Error ? err.message : String(err));
+      setEduErrors((prev) => ({
+        ...prev,
+        [degreeLevel]: err instanceof Error ? err.message : String(err),
+      }));
     } finally {
-      setEduReading(false);
+      setEduReadingLevel(null);
     }
   }
 
-  function applyEducationResult(result: unknown) {
+  function applyEducationResult(degreeLevel: DegreeLevel, result: unknown) {
     const r = result as {
+      qualification?: Bachelors | null;
       bachelors?: Bachelors | null;
       fields?: Record<
         string,
@@ -295,36 +417,49 @@ export default function Home() {
       fromCvOnly?: boolean;
       geminiRaw?: unknown;
     };
-    setEduGeminiRaw(r.geminiRaw ?? result);
-    if (r.bachelors) {
-      setBachelors({
-        degreeTitle: r.bachelors.degreeTitle ?? "",
-        institution: r.bachelors.institution ?? "",
-        country: r.bachelors.country ?? "",
-        durationYears: r.bachelors.durationYears ?? null,
-        durationCalculated: Boolean(r.bachelors.durationCalculated),
-      });
+    setEduGeminiRaws((prev) => ({
+      ...prev,
+      [degreeLevel]: r.geminiRaw ?? result,
+    }));
+    const block = r.qualification ?? r.bachelors;
+    if (block) {
+      setQualifications((prev) => ({
+        ...prev,
+        [degreeLevel]: {
+          degreeTitle: block.degreeTitle ?? "",
+          institution: block.institution ?? "",
+          country: block.country ?? "",
+          durationYears: block.durationYears ?? null,
+          durationCalculated: Boolean(block.durationCalculated),
+        },
+      }));
     }
-    setFromCvOnly(Boolean(r.fromCvOnly));
+    setFromCvOnlyByLevel((prev) => ({
+      ...prev,
+      [degreeLevel]: Boolean(r.fromCvOnly),
+    }));
     if (r.fields) {
-      setFieldSources(
-        Object.entries(r.fields).map(([field, meta]) => ({
-          id: field,
+      setFieldSources((prev) => {
+        const others = prev.filter((f) => f.degreeLevel !== degreeLevel);
+        const next = Object.entries(r.fields!).map(([field, meta]) => ({
+          id: `${degreeLevel}:${field}`,
           field,
+          degreeLevel,
           sourceDocumentId: meta.sourceDocumentId,
           extractedValue: meta.value,
           finalValue: meta.value,
           confidence: meta.confidence,
           alternatives: meta.alternatives ?? [],
-        })),
-      );
+        }));
+        return [...others, ...next];
+      });
     }
     setDirty(true);
   }
 
   async function onReadExperience() {
     if (!caseId) return;
-    if (userEdited) {
+    if (userEditedExp) {
       const ok = window.confirm(
         "Read again will replace experience rows you edited. Continue?",
       );
@@ -339,7 +474,7 @@ export default function Home() {
       }
       applyExperienceResult(started.result);
       await refreshCase();
-      setUserEdited(false);
+      setUserEditedExp(false);
     } catch (err) {
       setExpError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -381,14 +516,26 @@ export default function Home() {
     }
   }
 
-  function fieldMeta(field: string) {
-    return fieldSources.find((f) => f.field === field);
+  function fieldMeta(field: string, degreeLevel: DegreeLevel) {
+    return fieldSources.find(
+      (f) => f.field === field && f.degreeLevel === degreeLevel,
+    );
   }
 
-  function updateBachelor<K extends keyof Bachelors>(key: K, value: Bachelors[K]) {
-    setBachelors((prev) => ({ ...prev, [key]: value }));
+  function updateQualification<K extends keyof Bachelors>(
+    degreeLevel: DegreeLevel,
+    key: K,
+    value: Bachelors[K],
+  ) {
+    setQualifications((prev) => ({
+      ...prev,
+      [degreeLevel]: {
+        ...(prev[degreeLevel] ?? emptyQualification()),
+        [key]: value,
+      },
+    }));
     setDirty(true);
-    setUserEdited(true);
+    setEditedLevels((prev) => ({ ...prev, [degreeLevel]: true }));
   }
 
   function updateExperience(
@@ -400,7 +547,7 @@ export default function Home() {
       rows.map((row, i) => (i === index ? { ...row, [key]: value } : row)),
     );
     setDirty(true);
-    setUserEdited(true);
+    setUserEditedExp(true);
   }
 
   if (bootError) {
@@ -428,8 +575,9 @@ export default function Home() {
             Case details
           </h1>
           <p className="mt-2 max-w-md text-[0.95rem] leading-relaxed text-[#6b7a8d]">
-            Upload CV, transcript, and certificate files. Read fills bachelor&apos;s
-            education and work experience — you can always edit manually.
+            Select degree type(s), upload one CV, then add transcript and certificate
+            files per level. Read fills education and work experience — you can always
+            edit manually.
           </p>
           {saveMsg ? (
             <p className="mt-2 text-sm text-[#2c5f8a]">{saveMsg}</p>
@@ -442,136 +590,94 @@ export default function Home() {
         </header>
 
         <section className="mb-5 rounded-2xl border border-[#d5dde8] bg-white/90 p-5 shadow-[0_1px_0_rgba(26,35,50,0.03)]">
-          <h2 className="mb-3 text-base font-semibold text-[#1a2332]">Documents</h2>
-          <div className="mb-3 flex flex-wrap gap-2">
-            {(["CV", "TRANSCRIPT", "CERTIFICATE"] as UploadType[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setUploadType(t)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                  uploadType === t
-                    ? "bg-[#2c5f8a] text-white"
-                    : "bg-[#e8f0f7] text-[#2c5f8a]"
-                }`}
-              >
-                {t === "CV" ? "CV" : t === "TRANSCRIPT" ? "Transcript" : "Certificate"}
-              </button>
-            ))}
+          <h2 className="mb-1 text-base font-semibold text-[#1a2332]">
+            Select degree type(s)
+          </h2>
+          <p className="mb-3 text-xs text-[#6b7a8d]">
+            Choose every level you want to verify. Upload sections appear below for each.
+          </p>
+          <div className="mb-5 flex flex-wrap gap-2">
+            {DEGREE_LEVEL_ORDER.map((level) => {
+              const on = selectedLevels.includes(level);
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => void onToggleDegreeLevel(level)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                    on
+                      ? "bg-[#2c5f8a] text-white"
+                      : "bg-[#e8f0f7] text-[#2c5f8a]"
+                  }`}
+                >
+                  {DEGREE_LEVEL_LABELS[level]}
+                </button>
+              );
+            })}
           </div>
-          <input
-            type="file"
-            accept={ACCEPT}
-            disabled={uploading || !caseId}
-            onChange={(e) => {
-              void onUpload(e.target.files);
-              e.target.value = "";
-            }}
-            className="w-full text-sm text-[#4b5c6e] file:mr-3 file:rounded-full file:border-0 file:bg-[#e8f0f7] file:px-4 file:py-2 file:text-sm file:font-medium file:text-[#2c5f8a]"
+
+          <DocUploadBlock
+            title="CV"
+            hint="One CV for the whole case — used for work experience and education at every level."
+            docs={cvDocs}
+            uploading={uploadingKey === "CV"}
+            disabled={!caseId}
+            onUpload={(files) => void onUpload(files, "CV")}
+            onDelete={(id) => void onDeleteDoc(id)}
           />
-          {uploadError ? (
-            <p className="mt-2 text-sm text-[#b45309]">{uploadError}</p>
+
+          {visibleLevels.map((level) => (
+            <LevelDocsSection
+              key={level}
+              degreeLevel={level}
+              documents={documents}
+              uploadingKey={uploadingKey}
+              disabled={!caseId}
+              onUpload={(type, files) => void onUpload(files, type, level)}
+              onDelete={(id) => void onDeleteDoc(id)}
+            />
+          ))}
+
+          {!visibleLevels.length ? (
+            <p className="mt-3 text-sm text-[#6b7a8d]">
+              Select at least one degree type to upload transcripts and certificates.
+            </p>
           ) : null}
-          <ul className="mt-4 space-y-2">
-            {documents.map((doc) => (
-              <DocRow key={doc.id} doc={doc} onDelete={() => void onDeleteDoc(doc.id)} />
-            ))}
-            {!documents.length ? (
-              <li className="text-sm text-[#6b7a8d]">No documents uploaded yet.</li>
-            ) : null}
-          </ul>
+
+          {uploadError ? (
+            <p className="mt-3 text-sm text-[#b45309]">{uploadError}</p>
+          ) : null}
         </section>
 
-        <section className="mb-5 rounded-2xl border border-[#d5dde8] bg-white/90 p-5 shadow-[0_1px_0_rgba(26,35,50,0.03)]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-[#1a2332]">
-                Bachelor&apos;s education
-              </h2>
-              {fromCvOnly ? (
-                <p className="text-xs text-[#6b7a8d]">from CV only</p>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              disabled={!eduDocsReady || eduBlocked || eduReading}
-              onClick={() => void onReadEducation()}
-              className="rounded-full bg-[#2c5f8a] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {eduReading ? "Reading…" : "Read"}
-            </button>
-          </div>
-          {eduError ? (
-            <p className="mb-3 text-sm text-[#b45309]">{eduError}</p>
-          ) : null}
-          {eduGeminiRaw != null ? (
-            <DebugJson title="Gemini raw (education)" data={eduGeminiRaw} />
-          ) : null}
-          <div className="grid gap-3">
-            <Field
-              label="Degree title"
-              value={bachelors.degreeTitle || ""}
-              confidence={fieldMeta("degreeTitle")?.confidence}
-              source={sourceLabel(
-                documents.find((d) => d.id === fieldMeta("degreeTitle")?.sourceDocumentId)
-                  ?.type,
-              )}
-              conflict={Boolean(fieldMeta("degreeTitle")?.alternatives?.length)}
-              alternatives={fieldMeta("degreeTitle")?.alternatives}
-              onPickAlt={(v) => updateBachelor("degreeTitle", v)}
-              onChange={(v) => updateBachelor("degreeTitle", v)}
-            />
-            <Field
-              label="Institution"
-              value={bachelors.institution || ""}
-              confidence={fieldMeta("institution")?.confidence}
-              source={sourceLabel(
-                documents.find((d) => d.id === fieldMeta("institution")?.sourceDocumentId)
-                  ?.type,
-              )}
-              conflict={Boolean(fieldMeta("institution")?.alternatives?.length)}
-              alternatives={fieldMeta("institution")?.alternatives}
-              onPickAlt={(v) => updateBachelor("institution", v)}
-              onChange={(v) => updateBachelor("institution", v)}
-            />
-            <Field
-              label="Country"
-              value={bachelors.country || ""}
-              confidence={fieldMeta("country")?.confidence}
-              source={sourceLabel(
-                documents.find((d) => d.id === fieldMeta("country")?.sourceDocumentId)
-                  ?.type,
-              )}
-              conflict={Boolean(fieldMeta("country")?.alternatives?.length)}
-              alternatives={fieldMeta("country")?.alternatives}
-              onPickAlt={(v) => updateBachelor("country", v)}
-              onChange={(v) => updateBachelor("country", v)}
-            />
-            <Field
-              label={
-                bachelors.durationCalculated
-                  ? "Study duration (years, calculated)"
-                  : "Study duration (years)"
-              }
-              value={
-                bachelors.durationYears != null ? String(bachelors.durationYears) : ""
-              }
-              confidence={fieldMeta("durationYears")?.confidence}
-              source={sourceLabel(
-                documents.find((d) => d.id === fieldMeta("durationYears")?.sourceDocumentId)
-                  ?.type,
-              )}
-              conflict={Boolean(fieldMeta("durationYears")?.alternatives?.length)}
-              alternatives={fieldMeta("durationYears")?.alternatives}
-              onPickAlt={(v) =>
-                updateBachelor("durationYears", v ? Number(v) : null)
-              }
-              onChange={(v) =>
-                updateBachelor("durationYears", v === "" ? null : Number(v))
-              }
-            />
-          </div>
-        </section>
+        {visibleLevels.length ? (
+          visibleLevels.map((level) => {
+            const q = qualifications[level] ?? emptyQualification();
+            return (
+              <EducationBlock
+                key={level}
+                degreeLevel={level}
+                value={q}
+                documents={documents}
+                fieldMeta={(field) => fieldMeta(field, level)}
+                fromCvOnly={Boolean(fromCvOnlyByLevel[level])}
+                reading={eduReadingLevel === level}
+                ready={levelEduReady(level)}
+                blocked={levelEduBlocked(level)}
+                error={eduErrors[level] ?? null}
+                geminiRaw={eduGeminiRaws[level]}
+                onRead={() => void onReadEducation(level)}
+                onChange={(key, value) => updateQualification(level, key, value)}
+              />
+            );
+          })
+        ) : (
+          <section className="mb-5 rounded-2xl border border-[#d5dde8] bg-white/90 p-5 shadow-[0_1px_0_rgba(26,35,50,0.03)]">
+            <h2 className="text-base font-semibold text-[#1a2332]">Education</h2>
+            <p className="mt-2 text-sm text-[#6b7a8d]">
+              Select at least one degree type to show education fields.
+            </p>
+          </section>
+        )}
 
         <section className="mb-5 rounded-2xl border border-[#d5dde8] bg-white/90 p-5 shadow-[0_1px_0_rgba(26,35,50,0.03)]">
           <div className="mb-4 flex items-center justify-between gap-3">
@@ -608,7 +714,7 @@ export default function Home() {
                       onClick={() => {
                         setExperience((rows) => rows.filter((_, i) => i !== index));
                         setDirty(true);
-                        setUserEdited(true);
+                        setUserEditedExp(true);
                       }}
                     >
                       Remove
@@ -646,7 +752,7 @@ export default function Home() {
             onClick={() => {
               setExperience((rows) => [...rows, emptyExperience()]);
               setDirty(true);
-              setUserEdited(true);
+              setUserEditedExp(true);
             }}
           >
             + Add role
@@ -667,6 +773,216 @@ export default function Home() {
   );
 }
 
+function EducationBlock({
+  degreeLevel,
+  value,
+  documents,
+  fieldMeta,
+  fromCvOnly,
+  reading,
+  ready,
+  blocked,
+  error,
+  geminiRaw,
+  onRead,
+  onChange,
+}: {
+  degreeLevel: DegreeLevel;
+  value: Bachelors;
+  documents: CaseDocument[];
+  fieldMeta: (field: string) => FieldSource | undefined;
+  fromCvOnly: boolean;
+  reading: boolean;
+  ready: boolean;
+  blocked: boolean;
+  error: string | null;
+  geminiRaw: unknown;
+  onRead: () => void;
+  onChange: <K extends keyof Bachelors>(key: K, value: Bachelors[K]) => void;
+}) {
+  const label = DEGREE_LEVEL_LABELS[degreeLevel];
+  const meta = (field: string) => fieldMeta(field);
+  const docTypeFor = (field: string) =>
+    sourceLabel(
+      documents.find((d) => d.id === meta(field)?.sourceDocumentId)?.type,
+    );
+
+  return (
+    <section className="mb-5 rounded-2xl border border-[#d5dde8] bg-white/90 p-5 shadow-[0_1px_0_rgba(26,35,50,0.03)]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-[#1a2332]">
+            {label} education
+          </h2>
+          {fromCvOnly ? (
+            <p className="text-xs text-[#6b7a8d]">from CV only</p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          disabled={!ready || blocked || reading}
+          onClick={onRead}
+          className="rounded-full bg-[#2c5f8a] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {reading ? "Reading…" : "Read"}
+        </button>
+      </div>
+      {error ? <p className="mb-3 text-sm text-[#b45309]">{error}</p> : null}
+      {geminiRaw != null ? (
+        <DebugJson title={`Gemini raw (${label} education)`} data={geminiRaw} />
+      ) : null}
+      <div className="grid gap-3">
+        <Field
+          label="Degree title"
+          value={value.degreeTitle || ""}
+          confidence={meta("degreeTitle")?.confidence}
+          source={docTypeFor("degreeTitle")}
+          conflict={Boolean(meta("degreeTitle")?.alternatives?.length)}
+          alternatives={meta("degreeTitle")?.alternatives}
+          onPickAlt={(v) => onChange("degreeTitle", v)}
+          onChange={(v) => onChange("degreeTitle", v)}
+        />
+        <Field
+          label="Institution"
+          value={value.institution || ""}
+          confidence={meta("institution")?.confidence}
+          source={docTypeFor("institution")}
+          conflict={Boolean(meta("institution")?.alternatives?.length)}
+          alternatives={meta("institution")?.alternatives}
+          onPickAlt={(v) => onChange("institution", v)}
+          onChange={(v) => onChange("institution", v)}
+        />
+        <Field
+          label="Country"
+          value={value.country || ""}
+          confidence={meta("country")?.confidence}
+          source={docTypeFor("country")}
+          conflict={Boolean(meta("country")?.alternatives?.length)}
+          alternatives={meta("country")?.alternatives}
+          onPickAlt={(v) => onChange("country", v)}
+          onChange={(v) => onChange("country", v)}
+        />
+        <Field
+          label={
+            value.durationCalculated
+              ? "Study duration (years, calculated)"
+              : "Study duration (years)"
+          }
+          value={value.durationYears != null ? String(value.durationYears) : ""}
+          confidence={meta("durationYears")?.confidence}
+          source={docTypeFor("durationYears")}
+          conflict={Boolean(meta("durationYears")?.alternatives?.length)}
+          alternatives={meta("durationYears")?.alternatives}
+          onPickAlt={(v) => onChange("durationYears", v ? Number(v) : null)}
+          onChange={(v) =>
+            onChange("durationYears", v === "" ? null : Number(v))
+          }
+        />
+      </div>
+    </section>
+  );
+}
+
+function LevelDocsSection({
+  degreeLevel,
+  documents,
+  uploadingKey,
+  disabled,
+  onUpload,
+  onDelete,
+}: {
+  degreeLevel: DegreeLevel;
+  documents: CaseDocument[];
+  uploadingKey: string | null;
+  disabled: boolean;
+  onUpload: (type: "TRANSCRIPT" | "CERTIFICATE", files: FileList | null) => void;
+  onDelete: (docId: string) => void;
+}) {
+  const label = DEGREE_LEVEL_LABELS[degreeLevel];
+  const transcripts = documents.filter(
+    (d) => d.type === "TRANSCRIPT" && d.degreeLevel === degreeLevel,
+  );
+  const certificates = documents.filter(
+    (d) => d.type === "CERTIFICATE" && d.degreeLevel === degreeLevel,
+  );
+
+  return (
+    <div className="mt-5 rounded-xl border border-[#e4eaf2] bg-[#fafbfc] p-4">
+      <h3 className="mb-3 text-sm font-semibold text-[#1a2332]">
+        {label} — Transcript &amp; Certificate
+      </h3>
+      <div className="space-y-4">
+        <DocUploadBlock
+          title="Transcript"
+          hint="Multiple files allowed (e.g. multi-page photos)."
+          docs={transcripts}
+          uploading={uploadingKey === `TRANSCRIPT:${degreeLevel}`}
+          disabled={disabled}
+          onUpload={(files) => onUpload("TRANSCRIPT", files)}
+          onDelete={onDelete}
+        />
+        <DocUploadBlock
+          title="Certificate"
+          hint="Multiple files allowed (e.g. multi-page photos)."
+          docs={certificates}
+          uploading={uploadingKey === `CERTIFICATE:${degreeLevel}`}
+          disabled={disabled}
+          onUpload={(files) => onUpload("CERTIFICATE", files)}
+          onDelete={onDelete}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DocUploadBlock({
+  title,
+  hint,
+  docs,
+  uploading,
+  disabled,
+  onUpload,
+  onDelete,
+}: {
+  title: string;
+  hint?: string;
+  docs: CaseDocument[];
+  uploading: boolean;
+  disabled: boolean;
+  onUpload: (files: FileList | null) => void;
+  onDelete: (docId: string) => void;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <p className="text-sm font-medium text-[#1a2332]">{title}</p>
+        {hint ? <p className="text-[11px] text-[#6b7a8d]">{hint}</p> : null}
+      </div>
+      <input
+        type="file"
+        accept={ACCEPT}
+        disabled={uploading || disabled}
+        onChange={(e) => {
+          onUpload(e.target.files);
+          e.target.value = "";
+        }}
+        className="w-full text-sm text-[#4b5c6e] file:mr-3 file:rounded-full file:border-0 file:bg-[#e8f0f7] file:px-4 file:py-2 file:text-sm file:font-medium file:text-[#2c5f8a]"
+      />
+      {uploading ? (
+        <p className="mt-1 text-xs text-[#2c5f8a]">Uploading…</p>
+      ) : null}
+      <ul className="mt-2 space-y-2">
+        {docs.map((doc) => (
+          <DocRow key={doc.id} doc={doc} onDelete={() => onDelete(doc.id)} />
+        ))}
+        {!docs.length ? (
+          <li className="text-xs text-[#6b7a8d]">No files yet.</li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
+
 function DocRow({
   doc,
   onDelete,
@@ -683,16 +999,23 @@ function DocRow({
         : "text-[#2c5f8a] bg-[#e8f0f7]";
   const text = (doc.text ?? "").trim();
   const canShowText = doc.status === "DONE" && text.length > 0;
+  const levelLabel =
+    doc.degreeLevel && DEGREE_LEVEL_LABELS[doc.degreeLevel]
+      ? DEGREE_LEVEL_LABELS[doc.degreeLevel]
+      : null;
 
   return (
-    <li className="rounded-xl border border-[#e4eaf2] px-3 py-2">
+    <li className="rounded-xl border border-[#e4eaf2] bg-white px-3 py-2">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-[#1a2332]">
             {doc.originalName}
           </p>
           <p className="text-xs text-[#6b7a8d]">
-            {doc.type} · {doc.format}
+            {doc.type}
+            {levelLabel ? ` · ${levelLabel}` : ""}
+            {" · "}
+            {doc.format}
             {doc.extractionMethod ? ` · ${doc.extractionMethod}` : ""}
             {text ? ` · ${text.length} chars` : ""}
           </p>
