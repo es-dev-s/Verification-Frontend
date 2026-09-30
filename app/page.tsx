@@ -74,6 +74,8 @@ export default function Home() {
   const [staleHint, setStaleHint] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
 
   const documents = payload?.documents ?? [];
 
@@ -158,12 +160,39 @@ export default function Home() {
     };
   }, [applyCase]);
 
+  const refreshCaseMeta = useCallback(async () => {
+    if (!caseId) return;
+    const row = await getCase(caseId);
+    setPayload((prev) =>
+      prev
+        ? {
+            ...prev,
+            documents: row.documents,
+            readJobs: row.readJobs,
+            status: row.status,
+            selectedDegreeLevels:
+              row.selectedDegreeLevels ?? prev.selectedDegreeLevels,
+            engineeringTitledDegree:
+              row.engineeringTitledDegree ?? prev.engineeringTitledDegree,
+          }
+        : row,
+    );
+    setStaleHint(
+      (row.readJobs ?? []).some((j) => j.stale && j.status === "DONE"),
+    );
+    return row;
+  }, [caseId]);
+
   const refreshCase = useCallback(async () => {
     if (!caseId) return;
+    // While local form is dirty (e.g. right after Read), never clobber fields from GET.
+    if (dirtyRef.current) {
+      return refreshCaseMeta();
+    }
     const row = await getCase(caseId);
     applyCase(row);
     return row;
-  }, [applyCase, caseId]);
+  }, [applyCase, caseId, refreshCaseMeta]);
 
   useEffect(() => {
     if (!caseId) return;
@@ -404,7 +433,7 @@ export default function Home() {
         throw new Error(started.error ?? "Read failed");
       }
       applyEducationResult(degreeLevel, started.result);
-      await refreshCase();
+      await refreshCaseMeta();
       setEditedLevels((prev) => ({ ...prev, [degreeLevel]: false }));
     } catch (err) {
       setEduErrors((prev) => ({
@@ -490,7 +519,7 @@ export default function Home() {
         throw new Error(started.error ?? "Read failed");
       }
       applyExperienceResult(started.result);
-      await refreshCase();
+      await refreshCaseMeta();
       setUserEditedExp(false);
     } catch (err) {
       setExpError(err instanceof Error ? err.message : String(err));
