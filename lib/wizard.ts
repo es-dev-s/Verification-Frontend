@@ -23,7 +23,7 @@ export const WIZARD_STEPS: WizardStepDef[] = [
   {
     id: 3,
     title: "3. Assessment",
-    description: "Risk / ANZSCO — coming soon",
+    description: "ANZSCO recommendation",
   },
 ];
 

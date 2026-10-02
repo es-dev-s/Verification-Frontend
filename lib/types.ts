@@ -62,7 +62,6 @@ export type ExperienceRow = {
   title: string | null;
   start: string | null;
   end: string | null;
-  statedDurationYears: number | null;
   domainSuggested: boolean | null;
   domainFinal: boolean | null;
 };
@@ -110,6 +109,57 @@ export type CasePayload = {
   fieldSources: FieldSource[];
   readJobs: ReadJob[];
   draftJson?: unknown;
+  assessment?: AssessmentResult | null;
+};
+
+export type SubjectMatchRow = {
+  transcriptName: string;
+  transcriptCode: string | null;
+  qualification: "bachelor" | "master" | "unknown";
+  rubricSubject: string | null;
+  tier: "tier1" | "tier2" | "tier3" | null;
+  category: string | null;
+  method: "exact" | "fuzzy" | "llm" | "none";
+  confidence: number;
+  reason?: string;
+};
+
+export type AssessmentResult = {
+  anzscoCode: string | null;
+  title: string | null;
+  recommended: boolean;
+  confidence: "high" | "medium" | "low" | null;
+  determination: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
+  foundationalMatched: number;
+  foundationalExpected: number;
+  foundationalPct: number;
+  coreMatched: number;
+  coreExpected: number;
+  corePct: number;
+  tier1Outcome: string | null;
+  tier2Outcome: string | null;
+  tier3GateMet: boolean;
+  workExperienceBoost: boolean;
+  qualificationsUsed: Array<"bachelor" | "master" | "unknown">;
+  matches: SubjectMatchRow[];
+  unmatched: Array<{
+    name: string;
+    code: string | null;
+    qualification: "bachelor" | "master" | "unknown";
+  }>;
+  extractedSubjects?: ExtractedSubjectRow[];
+  explanation: string;
+};
+
+export type ExtractedSubjectRow = {
+  name: string;
+  code?: string | null;
+  credits?: string | null;
+  grade?: string | null;
+  yearOrSemester?: string | null;
+  qualification: "bachelor" | "master" | "unknown";
+  sourceSnippet?: string | null;
+  isRepeat?: boolean;
 };
 
 export type Qualification = {
@@ -145,7 +195,6 @@ export function emptyExperience(): ExperienceRow {
     title: "",
     start: "",
     end: "",
-    statedDurationYears: null,
     domainSuggested: null,
     domainFinal: null,
   };

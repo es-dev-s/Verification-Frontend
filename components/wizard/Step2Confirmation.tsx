@@ -16,7 +16,8 @@ export function Step2Confirmation({
   saveMsg,
   onEngineeringTitledChange,
   onBack,
-  onNextPlaceholder,
+  onNext,
+  nextBusy,
 }: {
   selectedLevels: DegreeLevel[];
   qualifications: Partial<
@@ -35,7 +36,8 @@ export function Step2Confirmation({
   saveMsg: string | null;
   onEngineeringTitledChange: (value: boolean) => void;
   onBack: () => void;
-  onNextPlaceholder: () => void;
+  onNext: () => void;
+  nextBusy?: boolean;
 }) {
   const blocks: ConfirmationQualification[] = buildConfirmationQualifications(
     selectedLevels,
@@ -184,10 +186,11 @@ export function Step2Confirmation({
         </button>
         <button
           type="button"
-          onClick={onNextPlaceholder}
-          className="rounded-full bg-[#1a2332] px-5 py-2.5 text-sm font-medium text-white"
+          onClick={onNext}
+          disabled={nextBusy}
+          className="rounded-full bg-[#1a2332] px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60"
         >
-          Next
+          {nextBusy ? "Assessing…" : "Next"}
         </button>
       </div>
     </div>

@@ -152,3 +152,19 @@ export async function confirmCase(
     body: JSON.stringify(body),
   });
 }
+
+export async function runAssessment(
+  caseId: string,
+  opts?: { force?: boolean },
+): Promise<import("./types").AssessmentResult> {
+  return api(`/cases/${caseId}/assess`, {
+    method: "POST",
+    body: JSON.stringify({ force: opts?.force ?? false }),
+  });
+}
+
+export async function getAssessment(
+  caseId: string,
+): Promise<import("./types").AssessmentResult> {
+  return api(`/cases/${caseId}/assess`);
+}

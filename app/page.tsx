@@ -5,6 +5,7 @@ import {
   createCase,
   deleteDocument,
   getCase,
+  runAssessment,
   saveDraft,
   setEngineeringTitledDegree,
   setSelectedDegreeLevels,
@@ -20,6 +21,7 @@ import {
   emptyQualification,
   sortDegreeLevels,
   sourceLabel,
+  type AssessmentResult,
   type Bachelors,
   type CaseDocument,
   type CasePayload,
@@ -30,6 +32,7 @@ import {
 } from "@/lib/types";
 import { CaseWizardLayout } from "@/components/wizard/CaseWizardLayout";
 import { Step2Confirmation } from "@/components/wizard/Step2Confirmation";
+import { Step3Assessment } from "@/components/wizard/Step3Assessment";
 import {
   isEngineeringRelatedChecked,
   type WizardStepId,
@@ -43,6 +46,9 @@ export default function Home() {
   const [payload, setPayload] = useState<CasePayload | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   const [wizardStep, setWizardStep] = useState<WizardStepId>(1);
+  const [assessment, setAssessment] = useState<AssessmentResult | null>(null);
+  const [assessLoading, setAssessLoading] = useState(false);
+  const [assessError, setAssessError] = useState<string | null>(null);
   const [selectedLevels, setSelectedLevels] = useState<DegreeLevel[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -112,7 +118,6 @@ export default function Home() {
           title: r.title ?? "",
           start: r.start ?? "",
           end: r.end ?? "",
-          statedDurationYears: r.statedDurationYears ?? null,
           domainSuggested: r.domainSuggested,
           domainFinal:
             r.domainFinal ?? r.domainSuggested ?? null,
@@ -268,7 +273,6 @@ export default function Home() {
         title: r.title || null,
         start: r.start || null,
         end: r.end || null,
-        statedDurationYears: r.statedDurationYears ?? null,
         domainSuggested: r.domainSuggested ?? null,
         domainFinal: r.domainFinal ?? null,
       })),
@@ -539,7 +543,6 @@ export default function Home() {
           title: row.title ?? "",
           start: row.start ?? "",
           end: row.end ?? "",
-          statedDurationYears: row.statedDurationYears ?? null,
           domainSuggested: row.domainSuggested,
           domainFinal: row.domainFinal ?? row.domainSuggested ?? null,
         })),
@@ -562,6 +565,27 @@ export default function Home() {
     }
     setWizardStep(2);
     setSaveMsg(null);
+  }
+
+  async function goToStep3(force = false) {
+    if (!caseId) {
+      setSaveMsg("Case not ready");
+      return;
+    }
+    setWizardStep(3);
+    setSaveMsg(null);
+    setAssessError(null);
+    setAssessLoading(true);
+    try {
+      await saveDraft(caseId, draftBody);
+      setDirty(false);
+      const result = await runAssessment(caseId, { force });
+      setAssessment(result);
+    } catch (err) {
+      setAssessError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAssessLoading(false);
+    }
   }
 
   async function onEngineeringTitledChange(value: boolean) {
@@ -629,7 +653,18 @@ export default function Home() {
 
   return (
     <CaseWizardLayout currentStep={wizardStep}>
-      {wizardStep === 2 ? (
+      {wizardStep === 3 ? (
+        <Step3Assessment
+          assessment={assessment}
+          loading={assessLoading}
+          error={assessError}
+          onBack={() => {
+            setWizardStep(2);
+            setSaveMsg(null);
+          }}
+          onRetry={() => void goToStep3(true)}
+        />
+      ) : wizardStep === 2 ? (
         <Step2Confirmation
           selectedLevels={selectedLevels}
           qualifications={qualifications}
@@ -641,9 +676,8 @@ export default function Home() {
             setWizardStep(1);
             setSaveMsg(null);
           }}
-          onNextPlaceholder={() => {
-            setSaveMsg("Assessment step coming soon");
-          }}
+          onNext={() => void goToStep3(false)}
+          nextBusy={assessLoading}
         />
       ) : (
     <div>
