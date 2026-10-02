@@ -8,6 +8,7 @@ import {
   runAssessment,
   saveDraft,
   setEngineeringTitledDegree,
+  setOccupation,
   setSelectedDegreeLevels,
   setStoredCaseId,
   startRead,
@@ -22,6 +23,7 @@ import {
   sortDegreeLevels,
   sourceLabel,
   type AssessmentResult,
+  type AnzscoCandidate,
   type Bachelors,
   type CaseDocument,
   type CasePayload,
@@ -663,6 +665,22 @@ export default function Home() {
             setSaveMsg(null);
           }}
           onRetry={() => void goToStep3(true)}
+          onConfirmOccupation={(candidate: AnzscoCandidate) => {
+            if (!caseId) return;
+            const label = `${candidate.title} (${candidate.anzscoCode})`;
+            void setOccupation(caseId, label)
+              .then(() => {
+                setPayload((prev) =>
+                  prev ? { ...prev, targetOccupation: label } : prev,
+                );
+                setSaveMsg(`Selected ${label}`);
+              })
+              .catch((err) => {
+                setSaveMsg(
+                  err instanceof Error ? err.message : "Could not save occupation",
+                );
+              });
+          }}
         />
       ) : wizardStep === 2 ? (
         <Step2Confirmation

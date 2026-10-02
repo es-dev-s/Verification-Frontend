@@ -124,6 +124,35 @@ export type SubjectMatchRow = {
   reason?: string;
 };
 
+export type MissingSubjectsByTier = {
+  tier1: string[];
+  tier2: string[];
+};
+
+export type TranscriptSourceInfo = {
+  kind: "bachelor" | "master" | "master_fallback" | "mixed" | "unknown";
+  label: string;
+};
+
+export type AnzscoCandidate = {
+  anzscoCode: string;
+  title: string;
+  foundationalMatched: number;
+  foundationalExpected: number;
+  foundationalPct: number;
+  coreMatched: number;
+  coreExpected: number;
+  corePct: number;
+  tier3GateMet: boolean;
+  matches: SubjectMatchRow[];
+  missingSubjects: MissingSubjectsByTier;
+  unmatched: Array<{
+    name: string;
+    code: string | null;
+    qualification: "bachelor" | "master" | "unknown";
+  }>;
+};
+
 export type AssessmentResult = {
   anzscoCode: string | null;
   title: string | null;
@@ -147,6 +176,10 @@ export type AssessmentResult = {
     code: string | null;
     qualification: "bachelor" | "master" | "unknown";
   }>;
+  missingSubjects?: MissingSubjectsByTier;
+  transcriptSource?: TranscriptSourceInfo;
+  mastersFallbackUsed?: boolean;
+  candidates?: AnzscoCandidate[];
   extractedSubjects?: ExtractedSubjectRow[];
   explanation: string;
 };
