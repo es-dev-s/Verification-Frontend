@@ -5,7 +5,9 @@ import {
   createCase,
   deleteDocument,
   getCase,
+  patchRiskCompetence,
   runAssessment,
+  runRiskAssessment,
   saveDraft,
   setEngineeringTitledDegree,
   setOccupation,
@@ -27,14 +29,17 @@ import {
   type Bachelors,
   type CaseDocument,
   type CasePayload,
+  type Competence,
   type DegreeLevel,
   type DocumentType,
   type ExperienceRow,
   type FieldSource,
+  type RiskAssessmentResult,
 } from "@/lib/types";
 import { CaseWizardLayout } from "@/components/wizard/CaseWizardLayout";
 import { Step2Confirmation } from "@/components/wizard/Step2Confirmation";
 import { Step3Assessment } from "@/components/wizard/Step3Assessment";
+import { Step4Risk } from "@/components/wizard/Step4Risk";
 import {
   isEngineeringRelatedChecked,
   type WizardStepId,
@@ -51,6 +56,14 @@ export default function Home() {
   const [assessment, setAssessment] = useState<AssessmentResult | null>(null);
   const [assessLoading, setAssessLoading] = useState(false);
   const [assessError, setAssessError] = useState<string | null>(null);
+  const [risk, setRisk] = useState<RiskAssessmentResult | null>(null);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [riskError, setRiskError] = useState<string | null>(null);
+  const [competenceBusy, setCompetenceBusy] = useState(false);
+  const [selectedAnzsco, setSelectedAnzsco] = useState<{
+    anzscoCode: string;
+    title: string;
+  } | null>(null);
   const [selectedLevels, setSelectedLevels] = useState<DegreeLevel[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -590,6 +603,62 @@ export default function Home() {
     }
   }
 
+  async function goToStep4(candidate: AnzscoCandidate) {
+    if (!caseId) {
+      setSaveMsg("Case not ready");
+      return;
+    }
+    const chosen = {
+      anzscoCode: candidate.anzscoCode,
+      title: candidate.title,
+    };
+    setSelectedAnzsco(chosen);
+    setWizardStep(4);
+    setSaveMsg(null);
+    setRiskError(null);
+    setRiskLoading(true);
+    try {
+      const label = `${candidate.title} (${candidate.anzscoCode})`;
+      await setOccupation(caseId, label);
+      setPayload((prev) =>
+        prev ? { ...prev, targetOccupation: label } : prev,
+      );
+      const result = await runRiskAssessment(caseId, chosen);
+      setRisk(result);
+    } catch (err) {
+      setRiskError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRiskLoading(false);
+    }
+  }
+
+  async function retryRisk() {
+    if (!caseId || !selectedAnzsco) return;
+    setRiskError(null);
+    setRiskLoading(true);
+    try {
+      const result = await runRiskAssessment(caseId, selectedAnzsco);
+      setRisk(result);
+    } catch (err) {
+      setRiskError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRiskLoading(false);
+    }
+  }
+
+  async function onCompetenceChange(competence: Competence) {
+    if (!caseId) return;
+    setCompetenceBusy(true);
+    try {
+      const result = await patchRiskCompetence(caseId, competence);
+      setRisk(result);
+    } catch (err) {
+      setRiskError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCompetenceBusy(false);
+    }
+  }
+
   async function onEngineeringTitledChange(value: boolean) {
     setEngineeringTitledDegreeState(value);
     setDirty(true);
@@ -655,7 +724,20 @@ export default function Home() {
 
   return (
     <CaseWizardLayout currentStep={wizardStep}>
-      {wizardStep === 3 ? (
+      {wizardStep === 4 ? (
+        <Step4Risk
+          risk={risk}
+          loading={riskLoading}
+          error={riskError}
+          competenceBusy={competenceBusy}
+          onBack={() => {
+            setWizardStep(3);
+            setSaveMsg(null);
+          }}
+          onRetry={() => void retryRisk()}
+          onCompetenceChange={(c) => void onCompetenceChange(c)}
+        />
+      ) : wizardStep === 3 ? (
         <Step3Assessment
           assessment={assessment}
           loading={assessLoading}
@@ -666,20 +748,7 @@ export default function Home() {
           }}
           onRetry={() => void goToStep3(true)}
           onConfirmOccupation={(candidate: AnzscoCandidate) => {
-            if (!caseId) return;
-            const label = `${candidate.title} (${candidate.anzscoCode})`;
-            void setOccupation(caseId, label)
-              .then(() => {
-                setPayload((prev) =>
-                  prev ? { ...prev, targetOccupation: label } : prev,
-                );
-                setSaveMsg(`Selected ${label}`);
-              })
-              .catch((err) => {
-                setSaveMsg(
-                  err instanceof Error ? err.message : "Could not save occupation",
-                );
-              });
+            void goToStep4(candidate);
           }}
         />
       ) : wizardStep === 2 ? (

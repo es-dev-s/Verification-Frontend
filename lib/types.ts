@@ -141,6 +141,19 @@ export type RubricSubjectCatalogEntry = {
   variants: string[];
 };
 
+export type MatchedJob = {
+  title: string;
+  employer: string | null;
+};
+
+export type WorkExperienceCandidateAnalysis = {
+  related: boolean;
+  matchedJobs: MatchedJob[];
+  analysis: string;
+  confidenceScoreBefore: number;
+  confidenceScoreAfter: number;
+};
+
 export type AnzscoCandidate = {
   anzscoCode: string;
   title: string;
@@ -156,6 +169,8 @@ export type AnzscoCandidate = {
   confidenceScore?: number;
   determination?: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
   recommended?: boolean;
+  workExperienceBoost?: boolean;
+  workExperienceAnalysis?: WorkExperienceCandidateAnalysis | null;
   matches: SubjectMatchRow[];
   missingSubjects: MissingSubjectsByTier;
   unmatched: Array<{
@@ -164,6 +179,35 @@ export type AnzscoCandidate = {
     qualification: "bachelor" | "master" | "unknown";
   }>;
   subjectCatalog?: RubricSubjectCatalogEntry[];
+};
+
+export type RiskLevel = "no_risk" | "low" | "medium" | "high";
+export type Competence = "competent" | "not_competent";
+
+export type RiskAssessmentResult = {
+  anzscoCode: string;
+  title: string;
+  fundamentalPct: number;
+  corePct: number;
+  historicalPct: number;
+  historical: {
+    totalCases: number;
+    positive: number;
+    negative: number;
+    banned: number;
+    positivePct: number;
+  };
+  overallPctBeforeWork: number;
+  workExperienceBoost: boolean;
+  workExperienceDelta: number;
+  overallPct: number;
+  riskLevel: RiskLevel;
+  reducingRisk: string[];
+  increasingRisk: string[];
+  missingMajorDomains: string;
+  competence: Competence;
+  competenceSource: "ai" | "manual";
+  insight: string;
 };
 
 export type AssessmentResult = {
@@ -197,6 +241,7 @@ export type AssessmentResult = {
   candidates?: AnzscoCandidate[];
   extractedSubjects?: ExtractedSubjectRow[];
   explanation: string;
+  risk?: RiskAssessmentResult;
 };
 
 export type ExtractedSubjectRow = {

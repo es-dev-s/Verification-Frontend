@@ -168,3 +168,29 @@ export async function getAssessment(
 ): Promise<import("./types").AssessmentResult> {
   return api(`/cases/${caseId}/assess`);
 }
+
+export async function runRiskAssessment(
+  caseId: string,
+  body: { anzscoCode: string; title?: string },
+): Promise<import("./types").RiskAssessmentResult> {
+  return api(`/cases/${caseId}/risk`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getRiskAssessment(
+  caseId: string,
+): Promise<import("./types").RiskAssessmentResult> {
+  return api(`/cases/${caseId}/risk`);
+}
+
+export async function patchRiskCompetence(
+  caseId: string,
+  competence: import("./types").Competence,
+): Promise<import("./types").RiskAssessmentResult> {
+  return api(`/cases/${caseId}/risk`, {
+    method: "PATCH",
+    body: JSON.stringify({ competence }),
+  });
+}

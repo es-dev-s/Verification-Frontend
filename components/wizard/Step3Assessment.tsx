@@ -524,6 +524,33 @@ export function Step3Assessment({
     selected?.determination ?? assessment?.determination,
   );
 
+  const selectedWorkAnalysis = selected?.workExperienceAnalysis ?? null;
+  const selectedWorkRelated = Boolean(
+    selectedWorkAnalysis?.related ??
+      selected?.workExperienceBoost ??
+      assessment?.workExperienceBoost,
+  );
+  const workConfidenceBefore =
+    typeof selectedWorkAnalysis?.confidenceScoreBefore === "number"
+      ? selectedWorkAnalysis.confidenceScoreBefore
+      : selectedWorkRelated && typeof selectedScore === "number"
+        ? Math.max(0, selectedScore - 4)
+        : typeof selectedScore === "number"
+          ? selectedScore
+          : null;
+  const workConfidenceAfter =
+    typeof selectedWorkAnalysis?.confidenceScoreAfter === "number"
+      ? selectedWorkAnalysis.confidenceScoreAfter
+      : typeof selectedScore === "number"
+        ? selectedScore
+        : null;
+  const workConfidenceDelta =
+    workConfidenceBefore != null && workConfidenceAfter != null
+      ? workConfidenceAfter - workConfidenceBefore
+      : null;
+  const matchedWorkJobs =
+    selectedWorkAnalysis?.matchedJobs?.filter((j) => j.title) ?? [];
+
   const recommendedCandidate = useMemo(() => {
     if (!candidates.length) return null;
     const recommended = candidates.filter((c) => c.recommended);
@@ -585,6 +612,49 @@ export function Step3Assessment({
 
       {assessment && !loading ? (
         <div className="space-y-4">
+          <section
+            aria-label="Extracted subjects"
+            className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
+          >
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+                  Extracted subjects
+                </p>
+                <p className="mt-1 text-sm text-ink-muted">
+                  Subject names returned by the LLM from the transcript
+                </p>
+              </div>
+              <p className="text-xs font-medium tabular-nums text-ink-faint">
+                {(assessment.extractedSubjects ?? []).length} subjects
+              </p>
+            </div>
+            {(assessment.extractedSubjects ?? []).length ? (
+              <ul className="grid max-h-64 gap-1.5 overflow-y-auto overscroll-contain sm:grid-cols-2 [scrollbar-gutter:stable]">
+                {(assessment.extractedSubjects ?? []).map((s, i) => (
+                  <li
+                    key={`ex-${s.name}-${i}`}
+                    className="rounded-lg bg-surface-subtle px-2.5 py-2 text-xs leading-snug text-ink"
+                  >
+                    <span className="font-medium">{s.name}</span>
+                    {s.qualification && s.qualification !== "unknown" ? (
+                      <span className="ml-1.5 text-ink-faint">
+                        · {s.qualification}
+                      </span>
+                    ) : null}
+                    {s.code ? (
+                      <span className="ml-1.5 text-ink-faint">{s.code}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="rounded-lg bg-surface-tint px-3 py-2.5 text-sm text-ink-muted">
+                No subjects extracted from the transcript.
+              </p>
+            )}
+          </section>
+
           {recommendedCandidate ? (
             <section
               aria-label="Recommended occupation"
@@ -757,12 +827,51 @@ export function Step3Assessment({
                     Work experience
                   </p>
                   <p className="mt-1.5 text-sm leading-snug text-ink">
-                    {assessment.workExperienceBoost
-                      ? "Work experience: relevant to this occupation"
-                      : "Work experience: not clearly related"}
+                    {selectedWorkRelated
+                      ? "Relevant to this occupation"
+                      : "Not clearly related"}
                   </p>
-                  <p className="mt-1 text-[11px] text-ink-faint">
-                    Separate from academic Tier 1 / Tier 2 coverage
+                  {workConfidenceBefore != null &&
+                  workConfidenceAfter != null ? (
+                    <p className="mt-1.5 text-sm font-medium tabular-nums text-ink">
+                      {formatConfidencePct(workConfidenceBefore)}
+                      <span className="mx-1.5 text-ink-faint">→</span>
+                      {formatConfidencePct(workConfidenceAfter)}
+                      {workConfidenceDelta != null &&
+                      workConfidenceDelta !== 0 ? (
+                        <span className="ml-1.5 text-[11px] font-normal text-ink-muted">
+                          ({workConfidenceDelta > 0 ? "+" : ""}
+                          {workConfidenceDelta} pts)
+                        </span>
+                      ) : null}
+                    </p>
+                  ) : null}
+                  {matchedWorkJobs.length > 0 ? (
+                    <ul className="mt-2 space-y-1">
+                      {matchedWorkJobs.map((job, i) => (
+                        <li
+                          key={`${job.title}-${i}`}
+                          className="text-[12px] leading-snug text-ink"
+                        >
+                          <span className="font-medium">{job.title}</span>
+                          {job.employer ? (
+                            <span className="text-ink-muted">
+                              {" "}
+                              @ {job.employer}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {selectedWorkAnalysis?.analysis ? (
+                    <p className="mt-2 text-[12px] leading-snug text-ink-muted">
+                      {selectedWorkAnalysis.analysis}
+                    </p>
+                  ) : null}
+                  <p className="mt-1.5 text-[11px] text-ink-faint">
+                    From confirmed work on the case — separate from Tier 1 /
+                    Tier 2 coverage
                   </p>
                 </section>
               </div>
@@ -798,8 +907,8 @@ export function Step3Assessment({
                     }`}
                   >
                     {confirmedCode === selected.anzscoCode
-                      ? "Occupation selected"
-                      : "Select this occupation"}
+                      ? "Continue to risk →"
+                      : "Select & continue to risk"}
                   </button>
                 </div>
 
@@ -1004,7 +1113,7 @@ export function Step3Assessment({
 
               {confirmedCode ? (
                 <p className="text-center text-xs text-ink-muted">
-                  Selected for next phase:{" "}
+                  Opening risk analysis for{" "}
                   <span className="font-medium text-ink">
                     {
                       candidates.find((c) => c.anzscoCode === confirmedCode)
