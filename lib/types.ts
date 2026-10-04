@@ -134,6 +134,13 @@ export type TranscriptSourceInfo = {
   label: string;
 };
 
+export type RubricSubjectCatalogEntry = {
+  name: string;
+  tier: "tier1" | "tier2" | "tier3";
+  category: string;
+  variants: string[];
+};
+
 export type AnzscoCandidate = {
   anzscoCode: string;
   title: string;
@@ -144,6 +151,11 @@ export type AnzscoCandidate = {
   coreExpected: number;
   corePct: number;
   tier3GateMet: boolean;
+  confidence?: "high" | "medium" | "low" | null;
+  /** 0–100 numeric confidence for ranking and display. */
+  confidenceScore?: number;
+  determination?: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
+  recommended?: boolean;
   matches: SubjectMatchRow[];
   missingSubjects: MissingSubjectsByTier;
   unmatched: Array<{
@@ -151,6 +163,7 @@ export type AnzscoCandidate = {
     code: string | null;
     qualification: "bachelor" | "master" | "unknown";
   }>;
+  subjectCatalog?: RubricSubjectCatalogEntry[];
 };
 
 export type AssessmentResult = {
@@ -158,6 +171,8 @@ export type AssessmentResult = {
   title: string | null;
   recommended: boolean;
   confidence: "high" | "medium" | "low" | null;
+  /** 0–100 numeric confidence for the top recommended occupation. */
+  confidenceScore?: number;
   determination: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
   foundationalMatched: number;
   foundationalExpected: number;

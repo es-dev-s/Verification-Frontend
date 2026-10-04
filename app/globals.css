@@ -1,13 +1,58 @@
 @import "tailwindcss";
 
 :root {
-  --background: #eef2f6;
-  --foreground: #1a2332;
+  /* Page — bright, close to card white, soft plum wash */
+  --background: #faf8fb;
+  --foreground: #241f2a;
+
+  /* Brand — #9256a9 and supporting tones */
+  --brand: #9256a9;
+  --brand-dark: #7a4294;
+  --brand-deeper: #62357a;
+  --brand-soft: #f5eef8;
+  --brand-muted: #e8d9ef;
+  --brand-ring: #c9a8d9;
+
+  /* Surfaces */
+  --surface: #ffffff;
+  --surface-subtle: #fcfafd;
+  --surface-tint: #f7f2f9;
+
+  /* Ink & lines */
+  --ink: #241f2a;
+  --ink-muted: #6a6272;
+  --ink-faint: #8f8796;
+  --line: #e4dce8;
+  --line-strong: #d4c8dc;
+
+  /* Status (restrained, professional) */
+  --success: #2f6b52;
+  --success-soft: #eef7f1;
+  --success-line: #c5ddd0;
+  --warning-soft: #faf4ec;
+  --warning-ink: #7a5c32;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-deeper: var(--brand-deeper);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-muted: var(--brand-muted);
+  --color-brand-ring: var(--brand-ring);
+  --color-surface: var(--surface);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-tint: var(--surface-tint);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-line: var(--success-line);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

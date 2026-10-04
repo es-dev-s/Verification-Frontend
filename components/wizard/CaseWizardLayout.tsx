@@ -14,13 +14,13 @@ export function CaseWizardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-full bg-[radial-gradient(900px_420px_at_12%_-8%,#d7e4f0_0%,transparent_55%),radial-gradient(700px_380px_at_100%_0%,#e2ebe3_0%,transparent_50%),#eef2f6] px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-[radial-gradient(900px_420px_at_10%_-10%,#efe4f5_0%,transparent_55%),radial-gradient(720px_400px_at_100%_0%,#f3eaf8_0%,transparent_52%),#faf8fb] px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
         <aside className="w-full shrink-0 lg:sticky lg:top-8 lg:w-64">
-          <p className="mb-1 text-sm font-medium tracking-wide text-[#5f7388]">
+          <p className="mb-1 text-sm font-medium tracking-wide text-ink-muted">
             Verification Engine
           </p>
-          <h1 className="mb-5 text-xl font-semibold tracking-tight text-[#1a2332]">
+          <h1 className="mb-5 text-xl font-semibold tracking-tight text-ink">
             Case workflow
           </h1>
           <nav aria-label="Case steps" className="flex flex-col gap-2.5">
@@ -32,20 +32,20 @@ export function CaseWizardLayout({
                   aria-current={state === "active" ? "step" : undefined}
                   className={
                     state === "active"
-                      ? "rounded-2xl border border-[#2c5f8a] bg-[#2c5f8a] px-4 py-3.5 text-white shadow-[0_8px_24px_rgba(44,95,138,0.22)]"
+                      ? "rounded-2xl border border-brand bg-brand px-4 py-3.5 text-white shadow-[0_8px_24px_rgba(146,86,169,0.28)]"
                       : state === "completed"
-                        ? "rounded-2xl border border-[#c5d4e3] bg-white/95 px-4 py-3.5 text-[#1a2332]"
-                        : "rounded-2xl border border-transparent bg-white/50 px-4 py-3.5 text-[#8a97a8]"
+                        ? "rounded-2xl border border-line bg-surface px-4 py-3.5 text-ink"
+                        : "rounded-2xl border border-transparent bg-surface/70 px-4 py-3.5 text-ink-faint"
                   }
                 >
                   <div className="flex items-start gap-2.5">
                     <span
                       className={
                         state === "completed"
-                          ? "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-700"
+                          ? "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success-soft text-[11px] font-bold text-success"
                           : state === "active"
                             ? "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/20 text-[11px] font-bold"
-                            : "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e8eef4] text-[11px] font-bold text-[#8a97a8]"
+                            : "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-soft text-[11px] font-bold text-ink-faint"
                       }
                       aria-hidden
                     >
@@ -64,8 +64,8 @@ export function CaseWizardLayout({
                           state === "active"
                             ? "text-white/80"
                             : state === "completed"
-                              ? "text-[#6b7a8d]"
-                              : "text-[#9aa8b8]"
+                              ? "text-ink-muted"
+                              : "text-ink-faint"
                         }`}
                       >
                         {step.description}

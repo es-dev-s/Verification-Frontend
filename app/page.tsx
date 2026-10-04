@@ -641,11 +641,11 @@ export default function Home() {
 
   if (bootError) {
     return (
-      <div className="min-h-full bg-[#eef2f6] px-4 py-10">
-        <main className="mx-auto max-w-2xl rounded-2xl border border-[#d5dde8] bg-white p-6">
-          <h1 className="text-lg font-semibold text-[#1a2332]">Cannot reach API</h1>
-          <p className="mt-2 text-sm text-[#6b7a8d]">{bootError}</p>
-          <p className="mt-2 text-sm text-[#6b7a8d]">
+      <div className="min-h-full bg-background px-4 py-10">
+        <main className="mx-auto max-w-2xl rounded-2xl border border-line bg-surface p-6">
+          <h1 className="text-lg font-semibold text-ink">Cannot reach API</h1>
+          <p className="mt-2 text-sm text-ink-muted">{bootError}</p>
+          <p className="mt-2 text-sm text-ink-muted">
             Start the API on port 3001 (`npm run dev` in api/) and ensure Postgres/Redis are up.
           </p>
         </main>
@@ -700,16 +700,16 @@ export default function Home() {
       ) : (
     <div>
         <header className="mb-8">
-          <h1 className="text-[1.75rem] font-semibold tracking-tight text-[#1a2332]">
+          <h1 className="text-[1.75rem] font-semibold tracking-tight text-ink">
             Upload &amp; details
           </h1>
-          <p className="mt-2 max-w-md text-[0.95rem] leading-relaxed text-[#6b7a8d]">
+          <p className="mt-2 max-w-md text-[0.95rem] leading-relaxed text-ink-muted">
             Select degree type(s), upload one CV, then add transcript and certificate
             files per level. Read fills education and work experience — you can always
             edit manually.
           </p>
           {saveMsg ? (
-            <p className="mt-2 text-sm text-[#2c5f8a]">{saveMsg}</p>
+            <p className="mt-2 text-sm text-brand">{saveMsg}</p>
           ) : null}
           {staleHint ? (
             <p className="mt-2 text-sm text-[#b45309]">
@@ -718,11 +718,11 @@ export default function Home() {
           ) : null}
         </header>
 
-        <section className="mb-5 rounded-2xl border border-[#d5dde8] bg-white/90 p-5 shadow-[0_1px_0_rgba(26,35,50,0.03)]">
-          <h2 className="mb-1 text-base font-semibold text-[#1a2332]">
+        <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
+          <h2 className="mb-1 text-base font-semibold text-ink">
             Select degree type(s)
           </h2>
-          <p className="mb-3 text-xs text-[#6b7a8d]">
+          <p className="mb-3 text-xs text-ink-muted">
             Choose every level you want to verify. Upload sections appear below for each.
           </p>
           <div className="mb-5 flex flex-wrap gap-2">
@@ -735,8 +735,8 @@ export default function Home() {
                   onClick={() => void onToggleDegreeLevel(level)}
                   className={`rounded-full px-3 py-1.5 text-xs font-medium ${
                     on
-                      ? "bg-[#2c5f8a] text-white"
-                      : "bg-[#e8f0f7] text-[#2c5f8a]"
+                      ? "bg-brand text-white"
+                      : "bg-brand-soft text-brand"
                   }`}
                 >
                   {DEGREE_LEVEL_LABELS[level]}
@@ -768,7 +768,7 @@ export default function Home() {
           ))}
 
           {!visibleLevels.length ? (
-            <p className="mt-3 text-sm text-[#6b7a8d]">
+            <p className="mt-3 text-sm text-ink-muted">
               Select at least one degree type to upload transcripts and certificates.
             </p>
           ) : null}
@@ -800,22 +800,22 @@ export default function Home() {
             );
           })
         ) : (
-          <section className="mb-5 rounded-2xl border border-[#d5dde8] bg-white/90 p-5 shadow-[0_1px_0_rgba(26,35,50,0.03)]">
-            <h2 className="text-base font-semibold text-[#1a2332]">Education</h2>
-            <p className="mt-2 text-sm text-[#6b7a8d]">
+          <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
+            <h2 className="text-base font-semibold text-ink">Education</h2>
+            <p className="mt-2 text-sm text-ink-muted">
               Select at least one degree type to show education fields.
             </p>
           </section>
         )}
 
-        <section className="mb-5 rounded-2xl border border-[#d5dde8] bg-white/90 p-5 shadow-[0_1px_0_rgba(26,35,50,0.03)]">
+        <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-[#1a2332]">Work experience</h2>
+            <h2 className="text-base font-semibold text-ink">Work experience</h2>
             <button
               type="button"
               disabled={!cvReady || cvBlocked || expReading}
               onClick={() => void onReadExperience()}
-              className="rounded-full bg-[#2c5f8a] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               {expReading ? "Reading…" : "Read"}
             </button>
@@ -830,10 +830,10 @@ export default function Home() {
             {experience.map((row, index) => (
               <div
                 key={row.id ?? index}
-                className="rounded-xl border border-[#e4eaf2] p-3"
+                className="rounded-xl border border-line p-3"
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs font-medium uppercase tracking-wide text-[#6b7a8d]">
+                  <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">
                     Role {index + 1}
                   </p>
                   {experience.length > 1 ? (
@@ -875,16 +875,16 @@ export default function Home() {
                 <label className="mt-3 flex cursor-pointer items-center gap-2.5">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 accent-[#2c5f8a]"
+                    className="h-4 w-4 accent-brand"
                     checked={isEngineeringRelatedChecked(row)}
                     onChange={(e) =>
                       updateExperience(index, "domainFinal", e.target.checked)
                     }
                   />
-                  <span className="text-sm text-[#1a2332]">
+                  <span className="text-sm text-ink">
                     Engineering-related role
                     {row.domainSuggested != null ? (
-                      <span className="ml-1.5 text-xs text-[#6b7a8d]">
+                      <span className="ml-1.5 text-xs text-ink-muted">
                         (AI suggested: {row.domainSuggested ? "yes" : "no"})
                       </span>
                     ) : null}
@@ -895,7 +895,7 @@ export default function Home() {
           </div>
           <button
             type="button"
-            className="mt-3 text-sm font-medium text-[#2c5f8a]"
+            className="mt-3 text-sm font-medium text-brand"
             onClick={() => {
               setExperience((rows) => [...rows, emptyExperience()]);
               setDirty(true);
@@ -910,7 +910,7 @@ export default function Home() {
           <button
             type="button"
             onClick={goToStep2}
-            className="rounded-full bg-[#1a2332] px-5 py-2.5 text-sm font-medium text-white"
+            className="rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-white shadow-[0_6px_16px_rgba(146,86,169,0.25)] hover:bg-brand-dark"
           >
             Next
           </button>
@@ -956,21 +956,21 @@ function EducationBlock({
     );
 
   return (
-    <section className="mb-5 rounded-2xl border border-[#d5dde8] bg-white/90 p-5 shadow-[0_1px_0_rgba(26,35,50,0.03)]">
+    <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-[#1a2332]">
+          <h2 className="text-base font-semibold text-ink">
             {label} education
           </h2>
           {fromCvOnly ? (
-            <p className="text-xs text-[#6b7a8d]">from CV only</p>
+            <p className="text-xs text-ink-muted">from CV only</p>
           ) : null}
         </div>
         <button
           type="button"
           disabled={!ready || blocked || reading}
           onClick={onRead}
-          className="rounded-full bg-[#2c5f8a] px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           {reading ? "Reading…" : "Read"}
         </button>
@@ -1055,8 +1055,8 @@ function LevelDocsSection({
   );
 
   return (
-    <div className="mt-5 rounded-xl border border-[#e4eaf2] bg-[#fafbfc] p-4">
-      <h3 className="mb-3 text-sm font-semibold text-[#1a2332]">
+    <div className="mt-5 rounded-xl border border-line bg-surface-subtle p-4">
+      <h3 className="mb-3 text-sm font-semibold text-ink">
         {label} — Transcript &amp; Certificate
       </h3>
       <div className="space-y-4">
@@ -1103,8 +1103,8 @@ function DocUploadBlock({
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <p className="text-sm font-medium text-[#1a2332]">{title}</p>
-        {hint ? <p className="text-[11px] text-[#6b7a8d]">{hint}</p> : null}
+        <p className="text-sm font-medium text-ink">{title}</p>
+        {hint ? <p className="text-[11px] text-ink-muted">{hint}</p> : null}
       </div>
       <input
         type="file"
@@ -1114,17 +1114,17 @@ function DocUploadBlock({
           onUpload(e.target.files);
           e.target.value = "";
         }}
-        className="w-full text-sm text-[#4b5c6e] file:mr-3 file:rounded-full file:border-0 file:bg-[#e8f0f7] file:px-4 file:py-2 file:text-sm file:font-medium file:text-[#2c5f8a]"
+        className="w-full text-sm text-ink-muted file:mr-3 file:rounded-full file:border-0 file:bg-brand-soft file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand"
       />
       {uploading ? (
-        <p className="mt-1 text-xs text-[#2c5f8a]">Uploading…</p>
+        <p className="mt-1 text-xs text-brand">Uploading…</p>
       ) : null}
       <ul className="mt-2 space-y-2">
         {docs.map((doc) => (
           <DocRow key={doc.id} doc={doc} onDelete={() => onDelete(doc.id)} />
         ))}
         {!docs.length ? (
-          <li className="text-xs text-[#6b7a8d]">No files yet.</li>
+          <li className="text-xs text-ink-muted">No files yet.</li>
         ) : null}
       </ul>
     </div>
@@ -1144,7 +1144,7 @@ function DocRow({
       ? "text-emerald-700 bg-emerald-50"
       : doc.status === "FAILED"
         ? "text-amber-800 bg-amber-50"
-        : "text-[#2c5f8a] bg-[#e8f0f7]";
+        : "text-brand bg-brand-soft";
   const text = (doc.text ?? "").trim();
   const canShowText = doc.status === "DONE" && text.length > 0;
   const levelLabel =
@@ -1153,13 +1153,13 @@ function DocRow({
       : null;
 
   return (
-    <li className="rounded-xl border border-[#e4eaf2] bg-white px-3 py-2">
+    <li className="rounded-xl border border-line bg-surface px-3 py-2">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-[#1a2332]">
+          <p className="truncate text-sm font-medium text-ink">
             {doc.originalName}
           </p>
-          <p className="text-xs text-[#6b7a8d]">
+          <p className="text-xs text-ink-muted">
             {doc.type}
             {levelLabel ? ` · ${levelLabel}` : ""}
             {" · "}
@@ -1179,12 +1179,12 @@ function DocRow({
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className="text-xs font-medium text-[#2c5f8a]"
+              className="text-xs font-medium text-brand"
             >
               {open ? "Hide text" : "Show text"}
             </button>
           ) : null}
-          <button type="button" onClick={onDelete} className="text-xs text-[#6b7a8d]">
+          <button type="button" onClick={onDelete} className="text-xs text-ink-muted">
             Delete
           </button>
         </div>
@@ -1201,10 +1201,10 @@ function DocRow({
 function DebugJson({ title, data }: { title: string; data: unknown }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="mb-3 rounded-xl border border-dashed border-[#b7c4d4] bg-[#f7f9fc] p-3">
+    <div className="mb-3 rounded-xl border border-dashed border-line-strong bg-surface-tint p-3">
       <button
         type="button"
-        className="mb-2 flex w-full items-center justify-between text-left text-xs font-semibold uppercase tracking-wide text-[#5f7388]"
+        className="mb-2 flex w-full items-center justify-between text-left text-xs font-semibold uppercase tracking-wide text-ink-muted"
         onClick={() => setOpen((v) => !v)}
       >
         <span>{title}</span>
@@ -1248,10 +1248,10 @@ function Field({
 
   return (
     <label className="relative block">
-      <span className="mb-1.5 flex items-center gap-2 text-sm font-medium text-[#1a2332]">
+      <span className="mb-1.5 flex items-center gap-2 text-sm font-medium text-ink">
         {label}
         {source ? (
-          <span className="text-xs font-normal text-[#6b7a8d]">{source}</span>
+          <span className="text-xs font-normal text-ink-muted">{source}</span>
         ) : null}
         {conflict ? (
           <span className="text-xs font-normal text-[#b45309]">conflict</span>
@@ -1261,10 +1261,10 @@ function Field({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-[#1a2332] outline-none focus:border-[#2c5f8a] ${
+        className={`w-full rounded-xl border bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-brand ${
           highlight
             ? "border-[#fdba74] bg-[#fff7ed]"
-            : "border-[#d5dde8]"
+            : "border-line"
         }`}
       />
       {uncertain && confLabel ? (
@@ -1278,7 +1278,7 @@ function Field({
             <button
               key={`${alt.documentType}-${alt.value}`}
               type="button"
-              className="block text-left text-xs text-[#2c5f8a]"
+              className="block text-left text-xs text-brand"
               onClick={() => onPickAlt?.(alt.value)}
             >
               Use “{alt.value}” ({sourceLabel(alt.documentType as DocumentType)})
