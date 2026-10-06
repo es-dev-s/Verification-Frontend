@@ -754,6 +754,7 @@ export default function Home() {
       {wizardStep === 4 ? (
         <Step4Risk
           risk={risk}
+          assessment={assessment}
           loading={riskLoading}
           error={riskError}
           competenceBusy={competenceBusy}

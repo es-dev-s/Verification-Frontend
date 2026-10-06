@@ -2,13 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type {
+  AnzscoCandidate,
+  AssessmentResult,
   Competence,
   DegreeLevel,
+  MissingSubjectsByTier,
   PrecedentCaseRow,
   PrecedentCheck,
   PrecedentRiskLevel,
   RiskAssessmentResult,
   RiskLevel,
+  SubjectMatchRow,
 } from "@/lib/types";
 import {
   buildConfirmationQualifications,
@@ -486,8 +490,296 @@ function PrecedentCheckCard({
   );
 }
 
+/** Mirrors api/src/risk/scoreRisk.ts riskLevelFromScore bands. */
+function riskBandFromScore(pct: number): RiskLevel {
+  if (pct >= 85) return "no_risk";
+  if (pct >= 75) return "low";
+  if (pct >= 50) return "medium";
+  return "high";
+}
+
+function riskBandRange(level: RiskLevel): string {
+  switch (level) {
+    case "no_risk":
+      return "85% and above";
+    case "low":
+      return "75–84.9%";
+    case "medium":
+      return "50–74.9%";
+    case "high":
+      return "below 50%";
+  }
+}
+
+type DomainSource = {
+  matches: SubjectMatchRow[];
+  missingSubjects: MissingSubjectsByTier;
+  foundationalExpected: number | null;
+  coreExpected: number | null;
+};
+
+function normalizeAnzsco(code: string | null | undefined): string {
+  return (code ?? "").replace(/\s+/g, "");
+}
+
+/** Find the assessment candidate the risk run was computed for. */
+function resolveDomainSource(
+  assessment: AssessmentResult | null | undefined,
+  anzscoCode: string,
+): DomainSource | null {
+  if (!assessment) return null;
+  const code = normalizeAnzsco(anzscoCode);
+  const candidate: AnzscoCandidate | undefined = assessment.candidates?.find(
+    (c) => normalizeAnzsco(c.anzscoCode) === code,
+  );
+  if (candidate) {
+    return {
+      matches: candidate.matches ?? [],
+      missingSubjects: candidate.missingSubjects ?? { tier1: [], tier2: [] },
+      foundationalExpected: candidate.foundationalExpected ?? null,
+      coreExpected: candidate.coreExpected ?? null,
+    };
+  }
+  if (normalizeAnzsco(assessment.anzscoCode) === code) {
+    return {
+      matches: assessment.matches ?? [],
+      missingSubjects: assessment.missingSubjects ?? { tier1: [], tier2: [] },
+      foundationalExpected: assessment.foundationalExpected ?? null,
+      coreExpected: assessment.coreExpected ?? null,
+    };
+  }
+  return null;
+}
+
+/** Unique rubric subjects matched for a tier + category set (same rule as API scoring). */
+function matchedSubjects(
+  matches: SubjectMatchRow[],
+  tier: "tier1" | "tier2",
+  categories: string[],
+): string[] {
+  const set = new Set<string>();
+  for (const m of matches) {
+    if (m.tier !== tier || !m.rubricSubject) continue;
+    if (m.method === "none") continue;
+    if (!categories.includes(m.category ?? "")) continue;
+    set.add(m.rubricSubject);
+  }
+  return [...set];
+}
+
+type DomainRow = {
+  key: string;
+  label: string;
+  tierLabel: string;
+  kind: "matched" | "missing" | "supporting";
+  subjects: string[];
+  denominator: number | null;
+  scored: boolean;
+};
+
+function buildDomainRows(source: DomainSource | null): DomainRow[] {
+  const matches = source?.matches ?? [];
+  const missing = source?.missingSubjects ?? { tier1: [], tier2: [] };
+  return [
+    {
+      key: "major-foundational-matched",
+      label: "Major foundational subject matched",
+      tierLabel: "Tier 1",
+      kind: "matched",
+      subjects: matchedSubjects(matches, "tier1", ["expected"]),
+      denominator: source?.foundationalExpected ?? null,
+      scored: true,
+    },
+    {
+      key: "major-foundational-missing",
+      label: "Major foundational subject missing",
+      tierLabel: "Tier 1",
+      kind: "missing",
+      subjects: missing.tier1 ?? [],
+      denominator: null,
+      scored: true,
+    },
+    {
+      key: "supporting-foundational-matched",
+      label: "Supporting foundational subject matched",
+      tierLabel: "Tier 1",
+      kind: "supporting",
+      subjects: matchedSubjects(matches, "tier1", ["optional", "supporting"]),
+      denominator: null,
+      scored: false,
+    },
+    {
+      key: "major-core-matched",
+      label: "Major core matched",
+      tierLabel: "Tier 2",
+      kind: "matched",
+      subjects: matchedSubjects(matches, "tier2", ["core"]),
+      denominator: source?.coreExpected ?? null,
+      scored: true,
+    },
+    {
+      key: "major-core-missing",
+      label: "Major core missing",
+      tierLabel: "Tier 2",
+      kind: "missing",
+      subjects: missing.tier2 ?? [],
+      denominator: null,
+      scored: true,
+    },
+    {
+      key: "supporting-core-matched",
+      label: "Supporting core matched",
+      tierLabel: "Tier 2",
+      kind: "supporting",
+      subjects: matchedSubjects(matches, "tier2", ["optional", "supporting"]),
+      denominator: null,
+      scored: false,
+    },
+  ];
+}
+
+function domainCountClass(kind: DomainRow["kind"], count: number): string {
+  if (count === 0) {
+    return "bg-surface-tint text-ink-muted ring-1 ring-line";
+  }
+  switch (kind) {
+    case "matched":
+      return "bg-success-soft text-success ring-1 ring-success-line";
+    case "missing":
+      return "bg-[#f8ecec] text-[#8a3a3a] ring-1 ring-[#e2c4c4]";
+    case "supporting":
+      return "bg-brand-soft text-brand-deeper ring-1 ring-brand-muted";
+  }
+}
+
+function RiskReasoningCard({ risk }: { risk: RiskAssessmentResult }) {
+  const finalBadge = riskBadge(risk.riskLevel);
+  const finalLabel = finalBadge.label.toLowerCase();
+  const academicPct =
+    Math.round(((risk.fundamentalPct * 0.3 + risk.corePct * 0.5) / 0.8) * 10) /
+    10;
+  const academicLabel = riskBadge(riskBandFromScore(academicPct)).label.toLowerCase();
+  const hist = risk.historical;
+
+  const items: Array<{ key: string; label: string; text: string }> = [
+    {
+      key: "academic",
+      label: "Academic alignment",
+      text: `Fundamentals at ${formatPct(risk.fundamentalPct)} and core at ${formatPct(risk.corePct)} give a weighted academic alignment of ${formatPct(academicPct)}, which on its own sits in the ${academicLabel} band.`,
+    },
+    {
+      key: "historical",
+      label: "Historical alignment",
+      text:
+        hist.totalCases > 0
+          ? `Historical outcomes were ${formatPct(hist.positivePct)} positive across ${hist.totalCases} past case${hist.totalCases === 1 ? "" : "s"}, carrying 20% weight toward the ${finalLabel} rating.`
+          : `No comparable historical cases were found, so a neutral ${formatPct(risk.historicalPct)} was applied at 20% weight toward the ${finalLabel} rating.`,
+    },
+  ];
+  if (risk.workExperienceBoost && risk.workExperienceDelta > 0) {
+    items.push({
+      key: "work",
+      label: "Work experience",
+      text: `Related work experience added ${risk.workExperienceDelta} pts, lifting overall alignment from ${formatPct(risk.overallPctBeforeWork)} to ${formatPct(risk.overallPct)}.`,
+    });
+  }
+
+  return (
+    <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Why this rating
+          </p>
+          <p className="mt-1 text-sm leading-snug text-ink">
+            Overall alignment of{" "}
+            <span className="font-semibold tabular-nums">
+              {formatPct(risk.overallPct)}
+            </span>{" "}
+            falls in the {finalLabel} band ({riskBandRange(risk.riskLevel)}).
+          </p>
+        </div>
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${finalBadge.className}`}
+        >
+          {finalBadge.label}
+        </span>
+      </div>
+      <ul className="mt-3 space-y-2 border-t border-line pt-3">
+        {items.map((item) => (
+          <li key={item.key} className="text-sm leading-snug text-ink">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+              {item.label}
+            </span>
+            <p className="mt-0.5">{item.text}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function DomainCountCard({ source }: { source: DomainSource | null }) {
+  const rows = useMemo(() => buildDomainRows(source), [source]);
+
+  return (
+    <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Domains used in count
+          </p>
+          <p className="mt-1 text-[11px] text-ink-faint">
+            Major subjects drive the score; supporting subjects never reduce it.
+          </p>
+        </div>
+      </div>
+      {!source ? (
+        <p className="mt-2 text-xs text-ink-muted">
+          Subject match details are unavailable for this occupation — re-run the
+          assessment to populate counts.
+        </p>
+      ) : null}
+      <ul className="mt-3 divide-y divide-line rounded-xl border border-line bg-surface">
+        {rows.map((row) => {
+          const count = row.subjects.length;
+          return (
+            <li key={row.key} className="px-3 py-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium leading-snug text-ink">
+                    {row.label}
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                    {row.tierLabel} · {row.scored ? "Scored" : "Not scored"}
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums ${domainCountClass(row.kind, count)}`}
+                >
+                  {row.denominator != null && row.denominator > 0
+                    ? `${count} / ${row.denominator}`
+                    : count}
+                </span>
+              </div>
+              {count > 0 ? (
+                <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">
+                  {row.subjects.join(", ")}
+                </p>
+              ) : (
+                <p className="mt-1.5 text-xs text-ink-faint">None</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 export function Step4Risk({
   risk,
+  assessment,
   loading,
   error,
   competenceBusy,
@@ -498,6 +790,8 @@ export function Step4Risk({
   onCompetenceChange,
 }: {
   risk: RiskAssessmentResult | null;
+  /** Step 3 assessment — used to derive per-domain match counts for the chosen ANZSCO. */
+  assessment?: AssessmentResult | null;
   loading: boolean;
   error: string | null;
   competenceBusy?: boolean;
@@ -522,6 +816,11 @@ export function Step4Risk({
   const degreeBlocks = useMemo(
     () => buildConfirmationQualifications(selectedLevels, qualifications),
     [selectedLevels, qualifications],
+  );
+  const riskAnzsco = risk?.anzscoCode ?? "";
+  const domainSource = useMemo(
+    () => resolveDomainSource(assessment, riskAnzsco),
+    [assessment, riskAnzsco],
   );
 
   return (
@@ -633,6 +932,10 @@ export function Step4Risk({
             precedent={precedent}
             qualifications={degreeBlocks}
           />
+
+          <RiskReasoningCard risk={risk} />
+
+          <DomainCountCard source={domainSource} />
 
           <div className="grid gap-3 md:grid-cols-2">
             <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
