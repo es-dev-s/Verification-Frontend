@@ -85,7 +85,13 @@ export default function Home() {
   const [eduGeminiRaws, setEduGeminiRaws] = useState<
     Partial<Record<DegreeLevel, unknown>>
   >({});
+  const [eduParseSources, setEduParseSources] = useState<
+    Partial<Record<DegreeLevel, "groq" | "heuristic">>
+  >({});
   const [expGeminiRaw, setExpGeminiRaw] = useState<unknown>(null);
+  const [expParseSource, setExpParseSource] = useState<"groq" | "heuristic" | null>(
+    null,
+  );
   const [dirty, setDirty] = useState(false);
   const [editedLevels, setEditedLevels] = useState<Partial<Record<DegreeLevel, boolean>>>(
     {},
@@ -165,6 +171,9 @@ export default function Home() {
         setUserEditedExp(false);
         setFromCvOnlyByLevel({});
         setEduGeminiRaws({});
+        setEduParseSources({});
+        setExpGeminiRaw(null);
+        setExpParseSource(null);
         setEduErrors({});
         setStaleHint(false);
         const row = await getCase(created.id);
@@ -481,10 +490,19 @@ export default function Home() {
       >;
       fromCvOnly?: boolean;
       geminiRaw?: unknown;
+      fallback?: boolean;
+      flags?: string[];
     };
+    const usedHeuristic =
+      Boolean(r.fallback) ||
+      (Array.isArray(r.flags) && r.flags.includes("heuristics_fallback"));
     setEduGeminiRaws((prev) => ({
       ...prev,
       [degreeLevel]: r.geminiRaw ?? result,
+    }));
+    setEduParseSources((prev) => ({
+      ...prev,
+      [degreeLevel]: usedHeuristic ? "heuristic" : "groq",
     }));
     const block = r.qualification ?? r.bachelors;
     if (block) {
@@ -548,8 +566,17 @@ export default function Home() {
   }
 
   function applyExperienceResult(result: unknown) {
-    const r = result as { rows?: ExperienceRow[]; geminiRaw?: unknown };
+    const r = result as {
+      rows?: ExperienceRow[];
+      geminiRaw?: unknown;
+      fallback?: boolean;
+      flags?: string[];
+    };
+    const usedHeuristic =
+      Boolean(r.fallback) ||
+      (Array.isArray(r.flags) && r.flags.includes("heuristics_fallback"));
     setExpGeminiRaw(r.geminiRaw ?? result);
+    setExpParseSource(usedHeuristic ? "heuristic" : "groq");
     if (r.rows?.length) {
       setExperience(
         r.rows.map((row) => ({
@@ -730,6 +757,8 @@ export default function Home() {
           loading={riskLoading}
           error={riskError}
           competenceBusy={competenceBusy}
+          selectedLevels={selectedLevels}
+          qualifications={qualifications}
           onBack={() => {
             setWizardStep(3);
             setSaveMsg(null);
@@ -863,6 +892,7 @@ export default function Home() {
                 blocked={levelEduBlocked(level)}
                 error={eduErrors[level] ?? null}
                 geminiRaw={eduGeminiRaws[level]}
+                parseSource={eduParseSources[level] ?? null}
                 onRead={() => void onReadEducation(level)}
                 onChange={(key, value) => updateQualification(level, key, value)}
               />
@@ -879,7 +909,14 @@ export default function Home() {
 
         <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-ink">Work experience</h2>
+            <div>
+              <h2 className="text-base font-semibold text-ink">Work experience</h2>
+              {expParseSource ? (
+                <p className="text-xs text-ink-muted">
+                  Parsed via {parseSourceLabel(expParseSource)}
+                </p>
+              ) : null}
+            </div>
             <button
               type="button"
               disabled={!cvReady || cvBlocked || expReading}
@@ -893,7 +930,10 @@ export default function Home() {
             <p className="mb-3 text-sm text-[#b45309]">{expError}</p>
           ) : null}
           {expGeminiRaw != null ? (
-            <DebugJson title="Gemini raw (experience)" data={expGeminiRaw} />
+            <DebugJson
+              title={`${parseSourceLabel(expParseSource ?? "groq")} raw (experience)`}
+              data={expGeminiRaw}
+            />
           ) : null}
           <div className="space-y-4">
             {experience.map((row, index) => (
@@ -990,6 +1030,10 @@ export default function Home() {
   );
 }
 
+function parseSourceLabel(source: "groq" | "heuristic"): string {
+  return source === "heuristic" ? "Heuristic fallback" : "Groq";
+}
+
 function EducationBlock({
   degreeLevel,
   value,
@@ -1001,6 +1045,7 @@ function EducationBlock({
   blocked,
   error,
   geminiRaw,
+  parseSource,
   onRead,
   onChange,
 }: {
@@ -1014,6 +1059,7 @@ function EducationBlock({
   blocked: boolean;
   error: string | null;
   geminiRaw: unknown;
+  parseSource: "groq" | "heuristic" | null;
   onRead: () => void;
   onChange: <K extends keyof Bachelors>(key: K, value: Bachelors[K]) => void;
 }) {
@@ -1034,6 +1080,11 @@ function EducationBlock({
           {fromCvOnly ? (
             <p className="text-xs text-ink-muted">from CV only</p>
           ) : null}
+          {parseSource ? (
+            <p className="text-xs text-ink-muted">
+              Parsed via {parseSourceLabel(parseSource)}
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -1046,7 +1097,10 @@ function EducationBlock({
       </div>
       {error ? <p className="mb-3 text-sm text-[#b45309]">{error}</p> : null}
       {geminiRaw != null ? (
-        <DebugJson title={`Gemini raw (${label} education)`} data={geminiRaw} />
+        <DebugJson
+          title={`${parseSourceLabel(parseSource ?? "groq")} raw (${label} education)`}
+          data={geminiRaw}
+        />
       ) : null}
       <div className="grid gap-3">
         <Field

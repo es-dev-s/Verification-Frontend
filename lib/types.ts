@@ -184,6 +184,31 @@ export type AnzscoCandidate = {
 export type RiskLevel = "no_risk" | "low" | "medium" | "high";
 export type Competence = "competent" | "not_competent";
 
+export type PrecedentRiskLevel = "no_risk" | "slight_risk" | "high_risk";
+
+export type PrecedentCaseRow = {
+  id: string;
+  occupation: string;
+  degree: string | null;
+  university: string | null;
+  country: string | null;
+  matchRisk: PrecedentRiskLevel;
+  outcome: string | null;
+  verifiedDate: string | null;
+};
+
+export type PrecedentCheck = {
+  matchingCases: number;
+  positiveOutcomeRate: number;
+  overallRisk: PrecedentRiskLevel | null;
+  riskCounts: {
+    no_risk: number;
+    slight_risk: number;
+    high_risk: number;
+  };
+  cases: PrecedentCaseRow[];
+};
+
 export type RiskAssessmentResult = {
   anzscoCode: string;
   title: string;
@@ -197,6 +222,7 @@ export type RiskAssessmentResult = {
     banned: number;
     positivePct: number;
   };
+  precedent: PrecedentCheck;
   overallPctBeforeWork: number;
   workExperienceBoost: boolean;
   workExperienceDelta: number;
