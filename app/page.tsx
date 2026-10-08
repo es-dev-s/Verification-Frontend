@@ -37,6 +37,7 @@ import {
   type RiskAssessmentResult,
 } from "@/lib/types";
 import { CaseWizardLayout } from "@/components/wizard/CaseWizardLayout";
+import { CareerEpisodesSection } from "@/components/wizard/CareerEpisodesSection";
 import { Step2Confirmation } from "@/components/wizard/Step2Confirmation";
 import { Step3Assessment } from "@/components/wizard/Step3Assessment";
 import { Step4Risk } from "@/components/wizard/Step4Risk";
@@ -1041,6 +1042,8 @@ export default function Home() {
             + Add role
           </button>
         </section>
+
+        <CareerEpisodesSection caseId={caseId} experience={experience} />
 
         <div className="flex items-center justify-end gap-3">
           <button

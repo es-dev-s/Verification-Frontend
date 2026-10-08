@@ -1,4 +1,10 @@
-import type { CasePayload, DocumentType, DegreeLevel } from "./types";
+import type {
+  CareerEpisode,
+  CasePayload,
+  DocumentType,
+  DegreeLevel,
+  ProjectSource,
+} from "./types";
 
 const API_URL = (
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"
@@ -82,6 +88,57 @@ export async function uploadDocument(
   return api(`/cases/${caseId}/documents?${qs.toString()}`, {
     method: "POST",
     body: form,
+  });
+}
+
+export type CareerEpisodeLink = {
+  projectSource?: ProjectSource | null;
+  experienceRowId?: string | null;
+  experienceLabel?: string | null;
+};
+
+/** Upload a career episode / project file (stored only — no OCR or parsing). */
+export async function uploadCareerEpisode(
+  caseId: string,
+  file: File,
+  link: CareerEpisodeLink,
+): Promise<{ episode: CareerEpisode; episodes: CareerEpisode[] }> {
+  const form = new FormData();
+  form.append("file", file);
+  const qs = new URLSearchParams();
+  if (link.projectSource) qs.set("projectSource", link.projectSource);
+  if (link.experienceRowId) qs.set("experienceRowId", link.experienceRowId);
+  if (link.experienceLabel) qs.set("experienceLabel", link.experienceLabel);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return api(`/cases/${caseId}/career-episodes${suffix}`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function listCareerEpisodes(
+  caseId: string,
+): Promise<{ episodes: CareerEpisode[] }> {
+  return api(`/cases/${caseId}/career-episodes`);
+}
+
+export async function updateCareerEpisode(
+  caseId: string,
+  episodeId: string,
+  link: CareerEpisodeLink,
+): Promise<{ episode: CareerEpisode; episodes: CareerEpisode[] }> {
+  return api(`/cases/${caseId}/career-episodes/${episodeId}`, {
+    method: "PATCH",
+    body: JSON.stringify(link),
+  });
+}
+
+export async function deleteCareerEpisode(
+  caseId: string,
+  episodeId: string,
+): Promise<{ ok: true; episodes: CareerEpisode[] }> {
+  return api(`/cases/${caseId}/career-episodes/${episodeId}`, {
+    method: "DELETE",
   });
 }
 

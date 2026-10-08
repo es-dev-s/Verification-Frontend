@@ -112,6 +112,31 @@ export type CasePayload = {
   assessment?: AssessmentResult | null;
 };
 
+export type ProjectSource = "WORK_BASED" | "ACADEMIC_PERSONAL" | "FIRM_PREPARED";
+
+export const PROJECT_SOURCE_OPTIONS: Array<{ value: ProjectSource; label: string }> = [
+  { value: "WORK_BASED", label: "Work-based project" },
+  { value: "ACADEMIC_PERSONAL", label: "Academic/personal project" },
+  { value: "FIRM_PREPARED", label: "Firm-prepared project" },
+];
+
+export type CareerEpisode = {
+  id: string;
+  caseId: string;
+  projectSource: ProjectSource | null;
+  /** ExperienceRow id at link time (rows can be re-created; see experienceLabel). */
+  experienceRowId: string | null;
+  /** Snapshot of the linked role, e.g. "Site Engineer — ABC Pvt Ltd (2020 – Present)". */
+  experienceLabel: string | null;
+  originalName: string;
+  format: DocumentFormat;
+  sizeBytes: number;
+  sha256: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type SubjectMatchRow = {
   transcriptName: string;
   transcriptCode: string | null;
