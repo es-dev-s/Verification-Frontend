@@ -40,6 +40,8 @@ import { CaseWizardLayout } from "@/components/wizard/CaseWizardLayout";
 import { Step2Confirmation } from "@/components/wizard/Step2Confirmation";
 import { Step3Assessment } from "@/components/wizard/Step3Assessment";
 import { Step4Risk } from "@/components/wizard/Step4Risk";
+import { Step5FinalReview } from "@/components/wizard/Step5FinalReview";
+import { Step6Placeholder } from "@/components/wizard/Step6Placeholder";
 import {
   isEngineeringRelatedChecked,
   type WizardStepId,
@@ -686,6 +688,15 @@ export default function Home() {
     }
   }
 
+  /** Steps 5–6: plain navigation (no API calls); scroll to top for long pages. */
+  function goToReviewStep(step: 4 | 5 | 6) {
+    setWizardStep(step);
+    setSaveMsg(null);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
   async function onEngineeringTitledChange(value: boolean) {
     setEngineeringTitledDegreeState(value);
     setDirty(true);
@@ -751,7 +762,21 @@ export default function Home() {
 
   return (
     <CaseWizardLayout currentStep={wizardStep}>
-      {wizardStep === 4 ? (
+      {wizardStep === 6 ? (
+        <Step6Placeholder onBack={() => goToReviewStep(5)} />
+      ) : wizardStep === 5 ? (
+        <Step5FinalReview
+          risk={risk}
+          assessment={assessment}
+          selectedAnzsco={selectedAnzsco}
+          selectedLevels={selectedLevels}
+          qualifications={qualifications}
+          experience={experience}
+          engineeringTitledDegree={engineeringTitledDegree}
+          onBack={() => goToReviewStep(4)}
+          onContinue={() => goToReviewStep(6)}
+        />
+      ) : wizardStep === 4 ? (
         <Step4Risk
           risk={risk}
           assessment={assessment}
@@ -766,6 +791,7 @@ export default function Home() {
           }}
           onRetry={() => void retryRisk()}
           onCompetenceChange={(c) => void onCompetenceChange(c)}
+          onContinue={() => goToReviewStep(5)}
         />
       ) : wizardStep === 3 ? (
         <Step3Assessment

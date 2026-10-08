@@ -1,7 +1,7 @@
 import type { DegreeLevel, ExperienceRow, Qualification } from "./types";
 import { DEGREE_LEVEL_LABELS, sortDegreeLevels } from "./types";
 
-export type WizardStepId = 1 | 2 | 3 | 4;
+export type WizardStepId = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type WizardStepDef = {
   id: WizardStepId;
@@ -29,6 +29,16 @@ export const WIZARD_STEPS: WizardStepDef[] = [
     id: 4,
     title: "4. Risk",
     description: "Alignment score and risk level",
+  },
+  {
+    id: 5,
+    title: "5. Final review",
+    description: "Verify occupation, risk, and competency",
+  },
+  {
+    id: 6,
+    title: "6. Next phase",
+    description: "Coming soon",
   },
 ];
 

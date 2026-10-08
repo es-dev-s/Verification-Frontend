@@ -9,73 +9,23 @@ import type {
   MissingSubjectsByTier,
   PrecedentCaseRow,
   PrecedentCheck,
-  PrecedentRiskLevel,
   RiskAssessmentResult,
-  RiskLevel,
   SubjectMatchRow,
 } from "@/lib/types";
 import {
   buildConfirmationQualifications,
   type ConfirmationQualification,
 } from "@/lib/wizard";
+import {
+  formatPct,
+  normalizeAnzsco,
+  precedentRiskBadge,
+  riskBadge,
+  riskBandFromScore,
+  riskBandRange,
+} from "@/lib/riskDisplay";
 
 const PAGE_SIZE = 10;
-
-function formatPct(n: number): string {
-  if (!Number.isFinite(n)) return "—";
-  return `${Math.round(n * 10) / 10}%`;
-}
-
-function riskBadge(level: RiskLevel): {
-  label: string;
-  className: string;
-} {
-  switch (level) {
-    case "no_risk":
-      return {
-        label: "No risk",
-        className: "bg-success-soft text-success ring-1 ring-success-line",
-      };
-    case "low":
-      return {
-        label: "Low risk",
-        className: "bg-brand-soft text-brand-deeper ring-1 ring-brand-muted",
-      };
-    case "medium":
-      return {
-        label: "Medium risk",
-        className: "bg-[#faf4ec] text-[#7a5c32] ring-1 ring-[#ead9b8]",
-      };
-    case "high":
-      return {
-        label: "High risk",
-        className: "bg-[#f8ecec] text-[#8a3a3a] ring-1 ring-[#e2c4c4]",
-      };
-  }
-}
-
-function precedentRiskBadge(level: PrecedentRiskLevel): {
-  label: string;
-  className: string;
-} {
-  switch (level) {
-    case "no_risk":
-      return {
-        label: "No risk",
-        className: "bg-success-soft text-success ring-1 ring-success-line",
-      };
-    case "slight_risk":
-      return {
-        label: "Slight risk",
-        className: "bg-[#faf4ec] text-[#7a5c32] ring-1 ring-[#ead9b8]",
-      };
-    case "high_risk":
-      return {
-        label: "High risk",
-        className: "bg-[#f8ecec] text-[#8a3a3a] ring-1 ring-[#e2c4c4]",
-      };
-  }
-}
 
 function ScoreTile({
   label,
@@ -490,37 +440,12 @@ function PrecedentCheckCard({
   );
 }
 
-/** Mirrors api/src/risk/scoreRisk.ts riskLevelFromScore bands. */
-function riskBandFromScore(pct: number): RiskLevel {
-  if (pct >= 85) return "no_risk";
-  if (pct >= 75) return "low";
-  if (pct >= 50) return "medium";
-  return "high";
-}
-
-function riskBandRange(level: RiskLevel): string {
-  switch (level) {
-    case "no_risk":
-      return "85% and above";
-    case "low":
-      return "75–84.9%";
-    case "medium":
-      return "50–74.9%";
-    case "high":
-      return "below 50%";
-  }
-}
-
 type DomainSource = {
   matches: SubjectMatchRow[];
   missingSubjects: MissingSubjectsByTier;
   foundationalExpected: number | null;
   coreExpected: number | null;
 };
-
-function normalizeAnzsco(code: string | null | undefined): string {
-  return (code ?? "").replace(/\s+/g, "");
-}
 
 /** Find the assessment candidate the risk run was computed for. */
 function resolveDomainSource(
@@ -788,6 +713,7 @@ export function Step4Risk({
   onBack,
   onRetry,
   onCompetenceChange,
+  onContinue,
 }: {
   risk: RiskAssessmentResult | null;
   /** Step 3 assessment — used to derive per-domain match counts for the chosen ANZSCO. */
@@ -810,6 +736,8 @@ export function Step4Risk({
   onBack: () => void;
   onRetry: () => void;
   onCompetenceChange: (competence: Competence) => void;
+  /** Go to Step 5 (final review). Only enabled once a risk result exists. */
+  onContinue?: () => void;
 }) {
   const badge = risk ? riskBadge(risk.riskLevel) : null;
   const precedent = risk?.precedent ?? emptyPrecedent();
@@ -1034,15 +962,27 @@ export function Step4Risk({
         >
           Back
         </button>
-        {risk && !loading ? (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded-full border border-line bg-surface px-5 py-2.5 text-sm font-medium text-ink"
-          >
-            Re-run risk
-          </button>
-        ) : null}
+        <div className="flex items-center gap-3">
+          {risk && !loading ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded-full border border-line bg-surface px-5 py-2.5 text-sm font-medium text-ink"
+            >
+              Re-run risk
+            </button>
+          ) : null}
+          {onContinue ? (
+            <button
+              type="button"
+              disabled={!risk || loading || competenceBusy}
+              onClick={onContinue}
+              className="rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-white shadow-[0_6px_16px_rgba(146,86,169,0.25)] hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+            >
+              Continue
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
