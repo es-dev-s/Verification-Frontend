@@ -17,6 +17,15 @@ import {
   type ExperienceRow,
   type ProjectSource,
 } from "@/lib/types";
+import {
+  BTN_GHOST_DANGER,
+  BTN_SECONDARY,
+  CARD,
+  FileChip,
+  PlusIcon,
+  SectionHeader,
+  UploadTile,
+} from "@/components/wizard/UploadTile";
 
 const ACCEPT =
   ".pdf,.png,.jpg,.jpeg,.docx,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -24,7 +33,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const SAVED_LINK = "__saved";
 
 const SELECT_CLASS =
-  "w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-brand disabled:opacity-50";
+  "w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand-ring/40 disabled:opacity-50";
 
 const EMPTY_EVIDENCE: CareerEpisodeEvidence = {
   hasCalculations: false,
@@ -164,23 +173,31 @@ function EvidenceChecks({
   onChange: (field: CareerEpisodeEvidenceField, checked: boolean) => void;
 }) {
   return (
-    <fieldset className="mt-3" disabled={disabled}>
-      <legend className="mb-1.5 block text-sm font-medium text-ink">
+    <fieldset className="mt-4" disabled={disabled}>
+      <legend className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
         Evidence included
       </legend>
-      <div className="flex flex-wrap gap-x-5 gap-y-2">
+      <div className="flex flex-wrap gap-2">
         {CAREER_EPISODE_EVIDENCE_OPTIONS.map((o) => (
           <label
             key={o.field}
-            className="flex cursor-pointer items-center gap-2 has-[:disabled]:cursor-default has-[:disabled]:opacity-50"
+            className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-xs font-medium text-ink-muted ring-1 ring-line transition hover:ring-brand-muted has-[:checked]:bg-brand-soft has-[:checked]:text-brand-deeper has-[:checked]:ring-brand-muted has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-ring has-[:disabled]:cursor-default has-[:disabled]:opacity-50"
           >
             <input
               type="checkbox"
-              className="h-4 w-4 accent-brand"
+              className="peer sr-only"
               checked={Boolean(value[o.field])}
               onChange={(e) => onChange(o.field, e.target.checked)}
             />
-            <span className="text-sm text-ink">{o.label}</span>
+            <span
+              aria-hidden
+              className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-line-strong bg-surface text-white peer-checked:border-brand peer-checked:bg-brand"
+            >
+              <svg viewBox="0 0 20 20" className="h-2.5 w-2.5 fill-current">
+                <path d="M8.1 13.6L4.5 10l1.1-1.1 2.5 2.5 6.3-6.3 1.1 1.1-7.4 7.4z" />
+              </svg>
+            </span>
+            {o.label}
           </label>
         ))}
       </div>
@@ -337,44 +354,53 @@ export function CareerEpisodesSection({
   const total = episodes.length + pending.length;
 
   return (
-    <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-ink">
-          Career episodes / projects
-        </h2>
-        <p className="text-xs text-ink-muted">
-          Upload one file per career episode or project. Saved with the case.
-        </p>
-      </div>
+    <section className={CARD}>
+      <SectionHeader
+        title="Career episodes / projects"
+        description="Upload one file per career episode or project. Saved with the case."
+        action={
+          <button
+            type="button"
+            disabled={!caseId}
+            className={BTN_SECONDARY}
+            onClick={addEntry}
+          >
+            <PlusIcon />
+            Add career episode
+          </button>
+        }
+      />
 
-      {error ? <p className="mb-3 text-sm text-[#b45309]">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="mb-3 text-sm text-[#b45309]">{error}</p>
+      ) : null}
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {episodes.map((ep, i) => {
           const busy = busyKey === ep.id;
           return (
-            <div key={ep.id} className="rounded-xl border border-line p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">
+            <div key={ep.id} className="rounded-xl border border-line bg-surface-subtle p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                   Career episode {i + 1}
                 </p>
                 <button
                   type="button"
                   disabled={busy}
-                  className="text-xs text-[#b45309] disabled:opacity-50"
+                  className={BTN_GHOST_DANGER}
+                  aria-label={`Remove career episode ${i + 1}`}
                   onClick={() => void removeSaved(ep)}
                 >
                   Remove
                 </button>
               </div>
-              <div className="mb-3 rounded-xl border border-line bg-surface px-3 py-2">
-                <p className="truncate text-sm font-medium text-ink">
-                  {ep.originalName}
-                </p>
-                <p className="text-xs text-ink-muted">
-                  {ep.format} · {formatSize(ep.sizeBytes)}
-                  {busy ? " · Saving…" : " · Saved"}
-                </p>
+              <div className="mb-3">
+                <FileChip
+                  name={ep.originalName}
+                  format={ep.format}
+                  meta={`${ep.format} · ${formatSize(ep.sizeBytes)}`}
+                  status={busy ? "uploading" : "saved"}
+                />
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <SourceSelect
@@ -409,16 +435,20 @@ export function CareerEpisodesSection({
           return (
             <div
               key={entry.key}
-              className="rounded-xl border border-dashed border-line-strong p-3"
+              className="rounded-xl border border-dashed border-line-strong bg-surface-subtle p-4"
             >
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                   Career episode {episodes.length + i + 1}
+                  <span className="ml-2 font-normal normal-case tracking-normal text-ink-faint">
+                    not saved yet
+                  </span>
                 </p>
                 <button
                   type="button"
                   disabled={busy}
-                  className="text-xs text-[#b45309] disabled:opacity-50"
+                  className={BTN_GHOST_DANGER}
+                  aria-label={`Remove career episode ${episodes.length + i + 1}`}
                   onClick={() =>
                     setPending((rows) => rows.filter((r) => r.key !== entry.key))
                   }
@@ -464,41 +494,28 @@ export function CareerEpisodesSection({
                   )
                 }
               />
-              <label className="mt-3 block">
-                <span className="mb-1.5 block text-sm font-medium text-ink">
-                  Career episode / project file
-                </span>
-                <input
-                  type="file"
+              <div className="mt-4">
+                <UploadTile
+                  label="Career episode file"
                   accept={ACCEPT}
-                  disabled={busy || !caseId}
-                  onChange={(e) => {
-                    void uploadPending(entry, e.target.files);
-                    e.target.value = "";
-                  }}
-                  className="w-full text-sm text-ink-muted file:mr-3 file:rounded-full file:border-0 file:bg-brand-soft file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand"
+                  busy={busy}
+                  disabled={!caseId}
+                  onFiles={(files) => void uploadPending(entry, files)}
                 />
-              </label>
-              <p className="mt-1 text-xs text-ink-muted">
-                {busy ? "Uploading…" : "Choose a file to save this entry."}
-              </p>
+                <p className="mt-1.5 text-[11px] text-ink-muted">
+                  The entry is saved as soon as a file is uploaded.
+                </p>
+              </div>
             </div>
           );
         })}
 
         {!total ? (
-          <p className="text-sm text-ink-muted">No career episodes yet.</p>
+          <p className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-sm text-ink-muted">
+            No career episodes yet.
+          </p>
         ) : null}
       </div>
-
-      <button
-        type="button"
-        disabled={!caseId}
-        className="mt-3 text-sm font-medium text-brand disabled:opacity-50"
-        onClick={addEntry}
-      >
-        + Add career episode
-      </button>
     </section>
   );
 }

@@ -39,6 +39,17 @@ import {
 } from "@/lib/types";
 import { CaseWizardLayout } from "@/components/wizard/CaseWizardLayout";
 import { CareerEpisodesSection } from "@/components/wizard/CareerEpisodesSection";
+import {
+  BTN_GHOST_DANGER,
+  BTN_PRIMARY,
+  BTN_SECONDARY,
+  CARD,
+  FOCUS_RING,
+  FileChip,
+  PlusIcon,
+  SectionHeader,
+  UploadTile,
+} from "@/components/wizard/UploadTile";
 import { Step2Confirmation } from "@/components/wizard/Step2Confirmation";
 import { Step3Assessment } from "@/components/wizard/Step3Assessment";
 import { Step4Risk } from "@/components/wizard/Step4Risk";
@@ -858,61 +869,73 @@ export default function Home() {
         />
       ) : (
     <div>
-        <header className="mb-8">
+        <header className="mb-7">
           <h1 className="text-[1.75rem] font-semibold tracking-tight text-ink">
             Upload &amp; details
           </h1>
-          <p className="mt-2 max-w-md text-[0.95rem] leading-relaxed text-ink-muted">
+          <p className="mt-2 max-w-xl text-[0.95rem] leading-relaxed text-ink-muted">
             Select degree type(s), upload one CV, then add transcript and certificate
             files per level. Read fills education and work experience — you can always
             edit manually.
           </p>
           {saveMsg ? (
-            <p className="mt-2 text-sm text-brand">{saveMsg}</p>
+            <p className="mt-3 text-sm text-brand">{saveMsg}</p>
           ) : null}
           {staleHint ? (
-            <p className="mt-2 text-sm text-[#b45309]">
+            <p className="mt-3 inline-flex rounded-lg bg-[#fff7ed] px-3 py-1.5 text-sm text-[#b45309] ring-1 ring-[#fdba74]/60">
               Documents changed since the last Read — please Read again.
             </p>
           ) : null}
         </header>
 
-        <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
-          <h2 className="mb-1 text-base font-semibold text-ink">
-            Select degree type(s)
-          </h2>
-          <p className="mb-3 text-xs text-ink-muted">
-            Choose every level you want to verify. Upload sections appear below for each.
-          </p>
-          <div className="mb-5 flex flex-wrap gap-2">
-            {DEGREE_LEVEL_ORDER.map((level) => {
-              const on = selectedLevels.includes(level);
-              return (
-                <button
-                  key={level}
-                  type="button"
-                  onClick={() => void onToggleDegreeLevel(level)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                    on
-                      ? "bg-brand text-white"
-                      : "bg-brand-soft text-brand"
-                  }`}
-                >
-                  {DEGREE_LEVEL_LABELS[level]}
-                </button>
-              );
-            })}
-          </div>
-
-          <DocUploadBlock
-            title="CV"
-            hint="One CV for the whole case — used for work experience and education at every level."
-            docs={cvDocs}
-            uploading={uploadingKey === "CV"}
-            disabled={!caseId}
-            onUpload={(files) => void onUpload(files, "CV")}
-            onDelete={(id) => void onDeleteDoc(id)}
+        <section className={CARD}>
+          <SectionHeader
+            title="Documents"
+            description="Choose every degree level you want to verify, then upload the files for each."
           />
+
+          <fieldset>
+            <legend className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
+              Degree type(s)
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {DEGREE_LEVEL_ORDER.map((level) => {
+                const on = selectedLevels.includes(level);
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => void onToggleDegreeLevel(level)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition ${FOCUS_RING} ${
+                      on
+                        ? "bg-brand text-white shadow-[0_2px_8px_rgba(146,86,169,0.25)]"
+                        : "bg-surface text-ink-muted ring-1 ring-line hover:text-brand hover:ring-brand-muted"
+                    }`}
+                  >
+                    {on ? (
+                      <svg aria-hidden viewBox="0 0 20 20" className="h-3.5 w-3.5 fill-current">
+                        <path d="M8.1 13.6L4.5 10l1.1-1.1 2.5 2.5 6.3-6.3 1.1 1.1-7.4 7.4z" />
+                      </svg>
+                    ) : null}
+                    {DEGREE_LEVEL_LABELS[level]}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          <div className="mt-5 grid gap-3">
+            <DocUploadBlock
+              title="CV"
+              hint="One CV for the whole case — used for work experience and education at every level."
+              docs={cvDocs}
+              uploading={uploadingKey === "CV"}
+              disabled={!caseId}
+              onUpload={(files) => void onUpload(files, "CV")}
+              onDelete={(id) => void onDeleteDoc(id)}
+            />
+          </div>
 
           {visibleLevels.map((level) => (
             <LevelDocsSection
@@ -927,13 +950,15 @@ export default function Home() {
           ))}
 
           {!visibleLevels.length ? (
-            <p className="mt-3 text-sm text-ink-muted">
+            <p className="mt-4 rounded-xl border border-dashed border-line px-4 py-3 text-center text-xs text-ink-muted">
               Select at least one degree type to upload transcripts and certificates.
             </p>
           ) : null}
 
           {uploadError ? (
-            <p className="mt-3 text-sm text-[#b45309]">{uploadError}</p>
+            <p role="alert" className="mt-4 rounded-lg bg-[#fff7ed] px-3 py-2 text-sm text-[#b45309] ring-1 ring-[#fdba74]/60">
+              {uploadError}
+            </p>
           ) : null}
         </section>
 
@@ -960,35 +985,35 @@ export default function Home() {
             );
           })
         ) : (
-          <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
-            <h2 className="text-base font-semibold text-ink">Education</h2>
-            <p className="mt-2 text-sm text-ink-muted">
-              Select at least one degree type to show education fields.
-            </p>
+          <section className={CARD}>
+            <SectionHeader
+              title="Education"
+              description="Select at least one degree type to show education fields."
+            />
           </section>
         )}
 
-        <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-ink">Work experience</h2>
-              {expParseSource ? (
-                <p className="text-xs text-ink-muted">
-                  Parsed via {parseSourceLabel(expParseSource)}
-                </p>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              disabled={!cvReady || cvBlocked || expReading}
-              onClick={() => void onReadExperience()}
-              className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {expReading ? "Reading…" : "Read"}
-            </button>
-          </div>
+        <section className={CARD}>
+          <SectionHeader
+            title="Work experience"
+            description={
+              expParseSource
+                ? `Parsed via ${parseSourceLabel(expParseSource)}`
+                : "Read the CV to fill roles, or add them manually."
+            }
+            action={
+              <button
+                type="button"
+                disabled={!cvReady || cvBlocked || expReading}
+                onClick={() => void onReadExperience()}
+                className={BTN_PRIMARY}
+              >
+                {expReading ? "Reading…" : "Read"}
+              </button>
+            }
+          />
           {expError ? (
-            <p className="mb-3 text-sm text-[#b45309]">{expError}</p>
+            <p role="alert" className="mb-3 text-sm text-[#b45309]">{expError}</p>
           ) : null}
           {expGeminiRaw != null ? (
             <DebugJson
@@ -996,20 +1021,21 @@ export default function Home() {
               data={expGeminiRaw}
             />
           ) : null}
-          <div className="space-y-4">
+          <div className="space-y-3">
             {experience.map((row, index) => (
               <div
                 key={row.id ?? index}
-                className="rounded-xl border border-line p-3"
+                className="rounded-xl border border-line bg-surface-subtle p-4"
               >
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                     Role {index + 1}
                   </p>
                   {experience.length > 1 ? (
                     <button
                       type="button"
-                      className="text-xs text-[#b45309]"
+                      className={BTN_GHOST_DANGER}
+                      aria-label={`Remove role ${index + 1}`}
                       onClick={() => {
                         setExperience((rows) => rows.filter((_, i) => i !== index));
                         setDirty(true);
@@ -1042,7 +1068,7 @@ export default function Home() {
                     onChange={(v) => updateExperience(index, "end", v)}
                   />
                 </div>
-                <label className="mt-3 flex cursor-pointer items-center gap-2.5">
+                <label className="mt-3 inline-flex cursor-pointer items-center gap-2.5">
                   <input
                     type="checkbox"
                     className="h-4 w-4 accent-brand"
@@ -1065,24 +1091,25 @@ export default function Home() {
           </div>
           <button
             type="button"
-            className="mt-3 text-sm font-medium text-brand"
+            className={`mt-3 ${BTN_SECONDARY}`}
             onClick={() => {
               setExperience((rows) => [...rows, emptyExperience()]);
               setDirty(true);
               setUserEditedExp(true);
             }}
           >
-            + Add role
+            <PlusIcon />
+            Add role
           </button>
         </section>
 
         <CareerEpisodesSection caseId={caseId} experience={experience} />
 
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-end gap-3 border-t border-line pt-5">
           <button
             type="button"
             onClick={goToStep2}
-            className="rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-white shadow-[0_6px_16px_rgba(146,86,169,0.25)] hover:bg-brand-dark"
+            className={`rounded-full bg-brand px-6 py-2.5 text-sm font-medium text-white shadow-[0_6px_16px_rgba(146,86,169,0.25)] hover:bg-brand-dark ${FOCUS_RING}`}
           >
             Next
           </button>
@@ -1134,39 +1161,41 @@ function EducationBlock({
     );
 
   return (
-    <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-ink">
-            {label} education
-          </h2>
-          {fromCvOnly ? (
-            <p className="text-xs text-ink-muted">from CV only</p>
-          ) : null}
-          {parseSource ? (
-            <p className="text-xs text-ink-muted">
-              Parsed via {parseSourceLabel(parseSource)}
-            </p>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          disabled={!ready || blocked || reading}
-          onClick={onRead}
-          className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {reading ? "Reading…" : "Read"}
-        </button>
-      </div>
-      {error ? <p className="mb-3 text-sm text-[#b45309]">{error}</p> : null}
+    <section className={CARD}>
+      <SectionHeader
+        title={`${label} education`}
+        description={
+          fromCvOnly || parseSource ? (
+            <>
+              {fromCvOnly ? "from CV only" : null}
+              {fromCvOnly && parseSource ? " · " : null}
+              {parseSource ? `Parsed via ${parseSourceLabel(parseSource)}` : null}
+            </>
+          ) : (
+            "Read the uploaded documents to fill these fields, or type them in."
+          )
+        }
+        action={
+          <button
+            type="button"
+            disabled={!ready || blocked || reading}
+            onClick={onRead}
+            className={BTN_PRIMARY}
+          >
+            {reading ? "Reading…" : "Read"}
+          </button>
+        }
+      />
+      {error ? <p role="alert" className="mb-3 text-sm text-[#b45309]">{error}</p> : null}
       {geminiRaw != null ? (
         <DebugJson
           title={`${parseSourceLabel(parseSource ?? "groq")} raw (${label} education)`}
           data={geminiRaw}
         />
       ) : null}
-      <div className="grid gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field
+          className="sm:col-span-2"
           label="Degree title"
           value={value.degreeTitle || ""}
           confidence={meta("degreeTitle")?.confidence}
@@ -1177,6 +1206,7 @@ function EducationBlock({
           onChange={(v) => onChange("degreeTitle", v)}
         />
         <Field
+          className="sm:col-span-2"
           label="Institution"
           value={value.institution || ""}
           confidence={meta("institution")?.confidence}
@@ -1241,11 +1271,14 @@ function LevelDocsSection({
   );
 
   return (
-    <div className="mt-5 rounded-xl border border-line bg-surface-subtle p-4">
-      <h3 className="mb-3 text-sm font-semibold text-ink">
-        {label} — Transcript &amp; Certificate
+    <div className="mt-5">
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-ink">
+        {label}
+        <span className="text-xs font-normal text-ink-muted">
+          Transcript &amp; certificate
+        </span>
       </h3>
-      <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
         <DocUploadBlock
           title="Transcript"
           hint="Multiple files allowed (e.g. multi-page photos)."
@@ -1269,6 +1302,7 @@ function LevelDocsSection({
   );
 }
 
+/** One upload slot: title, hint, file chips, then a dashed upload tile. */
 function DocUploadBlock({
   title,
   hint,
@@ -1287,32 +1321,37 @@ function DocUploadBlock({
   onDelete: (docId: string) => void;
 }) {
   return (
-    <div>
-      <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <p className="text-sm font-medium text-ink">{title}</p>
-        {hint ? <p className="text-[11px] text-ink-muted">{hint}</p> : null}
-      </div>
-      <input
-        type="file"
-        accept={ACCEPT}
-        disabled={uploading || disabled}
-        onChange={(e) => {
-          onUpload(e.target.files);
-          e.target.value = "";
-        }}
-        className="w-full text-sm text-ink-muted file:mr-3 file:rounded-full file:border-0 file:bg-brand-soft file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand"
-      />
-      {uploading ? (
-        <p className="mt-1 text-xs text-brand">Uploading…</p>
-      ) : null}
-      <ul className="mt-2 space-y-2">
-        {docs.map((doc) => (
-          <DocRow key={doc.id} doc={doc} onDelete={() => onDelete(doc.id)} />
-        ))}
-        {!docs.length ? (
-          <li className="text-xs text-ink-muted">No files yet.</li>
+    <div className="flex h-full flex-col rounded-xl border border-line bg-surface p-3.5">
+      <div className="mb-2.5 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-ink">{title}</p>
+          {hint ? (
+            <p className="mt-0.5 text-[11px] leading-snug text-ink-muted">{hint}</p>
+          ) : null}
+        </div>
+        {docs.length ? (
+          <span className="shrink-0 rounded-full bg-surface-tint px-2 py-0.5 text-[11px] font-medium text-ink-muted ring-1 ring-line">
+            {docs.length} file{docs.length === 1 ? "" : "s"}
+          </span>
         ) : null}
-      </ul>
+      </div>
+      {docs.length ? (
+        <ul className="mb-2.5 space-y-2" aria-label={`${title} files`}>
+          {docs.map((doc) => (
+            <DocRow key={doc.id} doc={doc} onDelete={() => onDelete(doc.id)} />
+          ))}
+        </ul>
+      ) : null}
+      <div className="mt-auto">
+        <UploadTile
+          label={title}
+          accept={ACCEPT}
+          compact={docs.length > 0}
+          busy={uploading}
+          disabled={disabled}
+          onFiles={onUpload}
+        />
+      </div>
     </div>
   );
 }
@@ -1325,12 +1364,12 @@ function DocRow({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const statusColor =
+  const status =
     doc.status === "DONE"
-      ? "text-emerald-700 bg-emerald-50"
+      ? "done"
       : doc.status === "FAILED"
-        ? "text-amber-800 bg-amber-50"
-        : "text-brand bg-brand-soft";
+        ? "failed"
+        : "processing";
   const text = (doc.text ?? "").trim();
   const canShowText = doc.status === "DONE" && text.length > 0;
   const levelLabel =
@@ -1339,47 +1378,52 @@ function DocRow({
       : null;
 
   return (
-    <li className="rounded-xl border border-line bg-surface px-3 py-2">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-ink">
-            {doc.originalName}
-          </p>
-          <p className="text-xs text-ink-muted">
+    <li>
+      <FileChip
+        name={doc.originalName}
+        format={doc.format}
+        status={status}
+        error={doc.error}
+        meta={
+          <>
             {doc.type}
             {levelLabel ? ` · ${levelLabel}` : ""}
-            {" · "}
-            {doc.format}
             {doc.extractionMethod ? ` · ${doc.extractionMethod}` : ""}
             {text ? ` · ${text.length} chars` : ""}
-          </p>
-          {doc.error ? (
-            <p className="mt-1 text-xs text-[#b45309]">{doc.error}</p>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor}`}>
-            {doc.status.toLowerCase()}
-          </span>
-          {canShowText ? (
+          </>
+        }
+        actions={
+          <>
+            {canShowText ? (
+              <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                aria-expanded={open}
+                className={`rounded-full px-2 py-1 text-xs font-medium text-brand hover:bg-brand-soft ${FOCUS_RING}`}
+              >
+                {open ? "Hide text" : "Text"}
+              </button>
+            ) : null}
             <button
               type="button"
-              onClick={() => setOpen((v) => !v)}
-              className="text-xs font-medium text-brand"
+              onClick={onDelete}
+              aria-label={`Delete ${doc.originalName}`}
+              title="Delete"
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-ink-muted hover:bg-[#f8ecec] hover:text-[#8a3a3a] ${FOCUS_RING}`}
             >
-              {open ? "Hide text" : "Show text"}
+              <svg aria-hidden viewBox="0 0 20 20" className="h-3.5 w-3.5 fill-current">
+                <path d="M5.3 4.2L10 8.9l4.7-4.7 1.1 1.1-4.7 4.7 4.7 4.7-1.1 1.1-4.7-4.7-4.7 4.7-1.1-1.1 4.7-4.7-4.7-4.7z" />
+              </svg>
             </button>
-          ) : null}
-          <button type="button" onClick={onDelete} className="text-xs text-ink-muted">
-            Delete
-          </button>
-        </div>
-      </div>
-      {open && canShowText ? (
-        <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-[#111827] p-3 text-[11px] leading-relaxed text-[#e5eef8] whitespace-pre-wrap break-words">
-          {text}
-        </pre>
-      ) : null}
+          </>
+        }
+      >
+        {open && canShowText ? (
+          <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-[#111827] p-3 text-[11px] leading-relaxed text-[#e5eef8] whitespace-pre-wrap break-words">
+            {text}
+          </pre>
+        ) : null}
+      </FileChip>
     </li>
   );
 }
@@ -1415,7 +1459,9 @@ function Field({
   conflict,
   alternatives,
   onPickAlt,
+  className = "",
 }: {
+  className?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -1433,7 +1479,7 @@ function Field({
   const highlight = uncertain || conflict || (!value && confidence != null);
 
   return (
-    <label className="relative block">
+    <label className={`relative block ${className}`}>
       <span className="mb-1.5 flex items-center gap-2 text-sm font-medium text-ink">
         {label}
         {source ? (
@@ -1447,7 +1493,7 @@ function Field({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full rounded-xl border bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-brand ${
+        className={`w-full rounded-xl border bg-surface px-3 py-2.5 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand-ring/40 ${
           highlight
             ? "border-[#fdba74] bg-[#fff7ed]"
             : "border-line"
