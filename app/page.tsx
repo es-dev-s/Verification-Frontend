@@ -5,6 +5,7 @@ import {
   createCase,
   deleteDocument,
   getCase,
+  getRiskAssessment,
   patchRiskCompetence,
   runAssessment,
   runRiskAssessment,
@@ -159,7 +160,39 @@ export default function Home() {
     let cancelled = false;
     (async () => {
       try {
-        // Always start a blank case — do not restore prior documents/reads.
+        // ?case=<id> (from the Clients page) reopens that case at Step 1.
+        const requestedCaseId =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("case")
+            : null;
+        if (requestedCaseId) {
+          try {
+            const existing = await getCase(requestedCaseId);
+            if (cancelled) return;
+            setStoredCaseId(existing.id);
+            setCaseId(existing.id);
+            setWizardStep(1);
+            applyCase(existing);
+            setAssessment(existing.assessment ?? null);
+            const storedRisk = existing.assessment
+              ? await getRiskAssessment(existing.id).catch(() => null)
+              : null;
+            if (cancelled) return;
+            setRisk(storedRisk);
+            if (storedRisk?.anzscoCode) {
+              setSelectedAnzsco({
+                anzscoCode: storedRisk.anzscoCode,
+                title: storedRisk.title ?? "",
+              });
+            }
+            return;
+          } catch {
+            // Unknown or not-owned case — fall back to a new blank case.
+            if (cancelled) return;
+            window.history.replaceState(null, "", window.location.pathname);
+          }
+        }
+        // Otherwise always start a blank case — do not restore prior documents/reads.
         const created = await createCase();
         if (cancelled) return;
         setStoredCaseId(created.id);

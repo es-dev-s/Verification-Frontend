@@ -414,3 +414,35 @@ export function sourceLabel(
       return "";
   }
 }
+
+/** Clients list (GET /clients) — one row per case, grouped by the Step 6 decision. */
+export type ClientVerification = "approved" | "rejected" | "unverified";
+export type ClientFilter = "all" | ClientVerification;
+
+export type ClientSummary = {
+  caseId: string;
+  name: string;
+  nameSource: "cv_file" | "document_file" | "case_id";
+  anzscoCode: string | null;
+  occupation: string | null;
+  degreeLevel: string | null;
+  degreeLabel: string | null;
+  degreeTitle: string | null;
+  institution: string | null;
+  riskLevel: string | null;
+  overallPct: number | null;
+  documentCount: number;
+  verification: ClientVerification;
+  reviewStatus: CaseReviewStatus | null;
+  reviewComment: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ClientsResponse = {
+  status: ClientFilter;
+  counts: Record<ClientFilter, number>;
+  reviewsAvailable: boolean;
+  clients: ClientSummary[];
+};

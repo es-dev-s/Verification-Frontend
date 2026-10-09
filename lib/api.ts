@@ -283,3 +283,10 @@ export async function saveCaseReview(
     body: JSON.stringify(body),
   });
 }
+
+/** Clients list for this browser's client id, filtered by Step 6 approval. */
+export async function listClients(
+  status: import("./types").ClientFilter = "all",
+): Promise<import("./types").ClientsResponse> {
+  return api(`/clients?status=${encodeURIComponent(status)}`);
+}

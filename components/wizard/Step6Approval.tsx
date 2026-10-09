@@ -244,6 +244,19 @@ export function Step6Approval({
         >
           Back
         </button>
+        {saved?.status === "APPROVED" ? (
+          <button
+            type="button"
+            onClick={() => {
+              // Drop any ?case= and reload: the engine boots a fresh case at Step 1.
+              window.history.replaceState(null, "", "/");
+              window.location.reload();
+            }}
+            className="rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-white shadow-[0_6px_16px_rgba(146,86,169,0.25)] hover:bg-brand-dark"
+          >
+            Start new client
+          </button>
+        ) : null}
       </div>
     </div>
   );
