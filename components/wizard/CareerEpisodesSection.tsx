@@ -9,8 +9,11 @@ import {
   type CareerEpisodeLink,
 } from "@/lib/api";
 import {
+  CAREER_EPISODE_EVIDENCE_OPTIONS,
   PROJECT_SOURCE_OPTIONS,
   type CareerEpisode,
+  type CareerEpisodeEvidence,
+  type CareerEpisodeEvidenceField,
   type ExperienceRow,
   type ProjectSource,
 } from "@/lib/types";
@@ -23,10 +26,20 @@ const SAVED_LINK = "__saved";
 const SELECT_CLASS =
   "w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-brand disabled:opacity-50";
 
+const EMPTY_EVIDENCE: CareerEpisodeEvidence = {
+  hasCalculations: false,
+  hasDrawingsCad: false,
+  hasDataTables: false,
+  hasSiteProductImages: false,
+  hasStandardsReferenced: false,
+  hasQuantifiableOutcomes: false,
+};
+
 type PendingEntry = {
   key: string;
   projectSource: ProjectSource | "";
   linkIndex: string;
+  evidence: CareerEpisodeEvidence;
 };
 
 type ExperienceOption = { index: number; row: ExperienceRow; label: string };
@@ -140,6 +153,52 @@ function SourceSelect({
   );
 }
 
+/** Horizontal row of manual evidence ticks (wraps on narrow screens). */
+function EvidenceChecks({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: CareerEpisodeEvidence;
+  disabled?: boolean;
+  onChange: (field: CareerEpisodeEvidenceField, checked: boolean) => void;
+}) {
+  return (
+    <fieldset className="mt-3" disabled={disabled}>
+      <legend className="mb-1.5 block text-sm font-medium text-ink">
+        Evidence included
+      </legend>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {CAREER_EPISODE_EVIDENCE_OPTIONS.map((o) => (
+          <label
+            key={o.field}
+            className="flex cursor-pointer items-center gap-2 has-[:disabled]:cursor-default has-[:disabled]:opacity-50"
+          >
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-brand"
+              checked={Boolean(value[o.field])}
+              onChange={(e) => onChange(o.field, e.target.checked)}
+            />
+            <span className="text-sm text-ink">{o.label}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function evidenceOf(ep: CareerEpisode): CareerEpisodeEvidence {
+  return {
+    hasCalculations: Boolean(ep.hasCalculations),
+    hasDrawingsCad: Boolean(ep.hasDrawingsCad),
+    hasDataTables: Boolean(ep.hasDataTables),
+    hasSiteProductImages: Boolean(ep.hasSiteProductImages),
+    hasStandardsReferenced: Boolean(ep.hasStandardsReferenced),
+    hasQuantifiableOutcomes: Boolean(ep.hasQuantifiableOutcomes),
+  };
+}
+
 /**
  * Step 1 — career episodes / projects. Upload and save only; nothing here feeds
  * parsing, assessment or risk. Loads its own list so the case payload is unchanged.
@@ -188,6 +247,7 @@ export function CareerEpisodesSection({
         key: `new-${Date.now()}-${rows.length}`,
         projectSource: "",
         linkIndex: "",
+        evidence: { ...EMPTY_EVIDENCE },
       },
     ]);
   }
@@ -209,6 +269,7 @@ export function CareerEpisodesSection({
       const res = await uploadCareerEpisode(caseId, file, {
         projectSource: entry.projectSource || null,
         ...linkFromIndex(options, entry.linkIndex),
+        ...entry.evidence,
       });
       setPending((rows) => rows.filter((r) => r.key !== entry.key));
       setEpisodes(res.episodes);
@@ -227,6 +288,31 @@ export function CareerEpisodesSection({
       const res = await updateCareerEpisode(caseId, ep.id, link);
       setEpisodes(res.episodes);
     } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  /** Tick/untick on a saved entry: show it immediately, save, revert on error. */
+  async function saveEvidence(
+    ep: CareerEpisode,
+    field: CareerEpisodeEvidenceField,
+    checked: boolean,
+  ) {
+    if (!caseId) return;
+    setError(null);
+    setBusyKey(ep.id);
+    setEpisodes((rows) =>
+      rows.map((r) => (r.id === ep.id ? { ...r, [field]: checked } : r)),
+    );
+    try {
+      const res = await updateCareerEpisode(caseId, ep.id, { [field]: checked });
+      setEpisodes(res.episodes);
+    } catch (err) {
+      setEpisodes((rows) =>
+        rows.map((r) => (r.id === ep.id ? { ...r, [field]: !checked } : r)),
+      );
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey(null);
@@ -307,6 +393,13 @@ export function CareerEpisodesSection({
                   }}
                 />
               </div>
+              <EvidenceChecks
+                value={evidenceOf(ep)}
+                disabled={busy}
+                onChange={(field, checked) =>
+                  void saveEvidence(ep, field, checked)
+                }
+              />
             </div>
           );
         })}
@@ -358,6 +451,19 @@ export function CareerEpisodesSection({
                   }
                 />
               </div>
+              <EvidenceChecks
+                value={entry.evidence}
+                disabled={busy}
+                onChange={(field, checked) =>
+                  setPending((rows) =>
+                    rows.map((r) =>
+                      r.key === entry.key
+                        ? { ...r, evidence: { ...r.evidence, [field]: checked } }
+                        : r,
+                    ),
+                  )
+                }
+              />
               <label className="mt-3 block">
                 <span className="mb-1.5 block text-sm font-medium text-ink">
                   Career episode / project file

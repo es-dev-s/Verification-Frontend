@@ -1,6 +1,9 @@
 import type {
   CareerEpisode,
+  CareerEpisodeEvidence,
   CasePayload,
+  CaseReview,
+  CaseReviewStatus,
   DocumentType,
   DegreeLevel,
   ProjectSource,
@@ -95,7 +98,7 @@ export type CareerEpisodeLink = {
   projectSource?: ProjectSource | null;
   experienceRowId?: string | null;
   experienceLabel?: string | null;
-};
+} & Partial<CareerEpisodeEvidence>;
 
 /** Upload a career episode / project file (stored only — no OCR or parsing). */
 export async function uploadCareerEpisode(
@@ -104,11 +107,22 @@ export async function uploadCareerEpisode(
   link: CareerEpisodeLink,
 ): Promise<{ episode: CareerEpisode; episodes: CareerEpisode[] }> {
   const form = new FormData();
-  form.append("file", file);
   const qs = new URLSearchParams();
   if (link.projectSource) qs.set("projectSource", link.projectSource);
   if (link.experienceRowId) qs.set("experienceRowId", link.experienceRowId);
   if (link.experienceLabel) qs.set("experienceLabel", link.experienceLabel);
+  // Evidence ticks go as multipart fields placed before the file so the server sees them.
+  for (const key of [
+    "hasCalculations",
+    "hasDrawingsCad",
+    "hasDataTables",
+    "hasSiteProductImages",
+    "hasStandardsReferenced",
+    "hasQuantifiableOutcomes",
+  ] as const) {
+    if (link[key] !== undefined) form.append(key, link[key] ? "true" : "false");
+  }
+  form.append("file", file);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return api(`/cases/${caseId}/career-episodes${suffix}`, {
     method: "POST",
@@ -249,5 +263,23 @@ export async function patchRiskCompetence(
   return api(`/cases/${caseId}/risk`, {
     method: "PATCH",
     body: JSON.stringify({ competence }),
+  });
+}
+
+/** Step 6 — saved approve / reject decision (null when still pending). */
+export async function getCaseReview(
+  caseId: string,
+): Promise<{ review: CaseReview | null }> {
+  return api(`/cases/${caseId}/review`);
+}
+
+/** Save or overwrite the Step 6 decision for this case. */
+export async function saveCaseReview(
+  caseId: string,
+  body: { status: CaseReviewStatus; comment: string | null },
+): Promise<{ review: CaseReview }> {
+  return api(`/cases/${caseId}/review`, {
+    method: "PUT",
+    body: JSON.stringify(body),
   });
 }

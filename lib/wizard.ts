@@ -37,8 +37,8 @@ export const WIZARD_STEPS: WizardStepDef[] = [
   },
   {
     id: 6,
-    title: "6. Next phase",
-    description: "Coming soon",
+    title: "6. Approval",
+    description: "Approve or reject with a comment",
   },
 ];
 

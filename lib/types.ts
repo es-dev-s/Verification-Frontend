@@ -112,6 +112,19 @@ export type CasePayload = {
   assessment?: AssessmentResult | null;
 };
 
+/** Step 6 manual decision; no saved review means pending. */
+export type CaseReviewStatus = "APPROVED" | "REJECTED";
+
+export type CaseReview = {
+  status: CaseReviewStatus;
+  comment: string | null;
+  /** ISO time the current decision was saved. */
+  reviewedAt: string;
+  updatedAt: string;
+};
+
+export const CASE_REVIEW_COMMENT_MAX = 2000;
+
 export type ProjectSource = "WORK_BASED" | "ACADEMIC_PERSONAL" | "FIRM_PREPARED";
 
 export const PROJECT_SOURCE_OPTIONS: Array<{ value: ProjectSource; label: string }> = [
@@ -133,9 +146,38 @@ export type CareerEpisode = {
   sizeBytes: number;
   sha256: string;
   sortOrder: number;
+  hasCalculations: boolean;
+  hasDrawingsCad: boolean;
+  hasDataTables: boolean;
+  hasSiteProductImages: boolean;
+  hasStandardsReferenced: boolean;
+  hasQuantifiableOutcomes: boolean;
   createdAt: string;
   updatedAt: string;
 };
+
+export type CareerEpisodeEvidenceField =
+  | "hasCalculations"
+  | "hasDrawingsCad"
+  | "hasDataTables"
+  | "hasSiteProductImages"
+  | "hasStandardsReferenced"
+  | "hasQuantifiableOutcomes";
+
+export type CareerEpisodeEvidence = Record<CareerEpisodeEvidenceField, boolean>;
+
+/** Evidence checkboxes shown on every career episode card (manual ticks). */
+export const CAREER_EPISODE_EVIDENCE_OPTIONS: Array<{
+  field: CareerEpisodeEvidenceField;
+  label: string;
+}> = [
+  { field: "hasCalculations", label: "Calculations" },
+  { field: "hasDrawingsCad", label: "Drawings / CAD" },
+  { field: "hasDataTables", label: "Data tables" },
+  { field: "hasSiteProductImages", label: "Site / product images" },
+  { field: "hasStandardsReferenced", label: "Standards referenced" },
+  { field: "hasQuantifiableOutcomes", label: "Quantifiable outcomes" },
+];
 
 export type SubjectMatchRow = {
   transcriptName: string;
