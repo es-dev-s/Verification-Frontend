@@ -2,28 +2,28 @@
 
 :root {
   /* Page — bright, close to card white, soft plum wash */
-  --background: #faf8fb;
+  --background: #fafafa;
   --foreground: #241f2a;
 
   /* Brand — #9256a9 and supporting tones */
-  --brand: #9256a9;
-  --brand-dark: #7a4294;
-  --brand-deeper: #62357a;
-  --brand-soft: #f5eef8;
+  --brand: #e6a35c;
+  --brand-dark: #da9041;
+  --brand-deeper: #060606;
+  --brand-soft: #f8f4ee;
   --brand-muted: #e8d9ef;
-  --brand-ring: #c9a8d9;
+  --brand-ring: #d9c3a8;
 
   /* Surfaces */
   --surface: #ffffff;
-  --surface-subtle: #fcfafd;
-  --surface-tint: #f7f2f9;
+  --surface-subtle: #fdfcfa;
+  --surface-tint: #f9f7f2;
 
   /* Ink & lines */
   --ink: #241f2a;
   --ink-muted: #6a6272;
   --ink-faint: #8f8796;
   --line: #e4dce8;
-  --line-strong: #d4c8dc;
+  --line-strong: #dcd2c8;
 
   /* Status (restrained, professional) */
   --success: #2f6b52;

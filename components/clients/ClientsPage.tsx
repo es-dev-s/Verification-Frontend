@@ -152,13 +152,11 @@ export function ClientsPage() {
   }, [data, query]);
 
   return (
-    <div className="min-h-full flex-1 bg-[radial-gradient(900px_420px_at_10%_-10%,#efe4f5_0%,transparent_55%),radial-gradient(720px_400px_at_100%_0%,#f3eaf8_0%,transparent_52%),#faf8fb] px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-full flex-1 bg-background px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto w-full max-w-5xl">
         <header className="mb-6">
           <h1 className="text-[1.75rem] font-semibold tracking-tight text-ink">Clients</h1>
           <p className="mt-2 max-w-xl text-[0.95rem] leading-relaxed text-ink-muted">
-            Grouped by the Step 6 decision: approved, rejected, or unverified (no
-            decision yet). Click a client to open their case in the Verification Engine.
           </p>
         </header>
 

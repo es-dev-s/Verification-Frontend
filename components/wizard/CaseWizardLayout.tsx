@@ -14,7 +14,7 @@ export function CaseWizardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-full bg-[radial-gradient(900px_420px_at_10%_-10%,#efe4f5_0%,transparent_55%),radial-gradient(720px_400px_at_100%_0%,#f3eaf8_0%,transparent_52%),#faf8fb] px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-background px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
         <aside className="w-full shrink-0 lg:sticky lg:top-8 lg:w-64">
           <p className="mb-1 text-sm font-medium tracking-wide text-ink-muted">

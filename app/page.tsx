@@ -874,9 +874,7 @@ export default function Home() {
             Upload &amp; details
           </h1>
           <p className="mt-2 max-w-xl text-[0.95rem] leading-relaxed text-ink-muted">
-            Select degree type(s), upload one CV, then add transcript and certificate
-            files per level. Read fills education and work experience — you can always
-            edit manually.
+         
           </p>
           {saveMsg ? (
             <p className="mt-3 text-sm text-brand">{saveMsg}</p>
