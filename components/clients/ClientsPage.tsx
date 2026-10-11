@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { listClients } from "@/lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  clearStoredCaseId,
+  deleteClientCase,
+  getStoredCaseId,
+  listClients,
+} from "@/lib/api";
 import type { ClientFilter, ClientSummary, ClientsResponse } from "@/lib/types";
 import { formatPct, riskBadge } from "@/lib/riskDisplay";
 
@@ -41,7 +46,21 @@ function StatusBadge({ client }: { client: ClientSummary }) {
   );
 }
 
-function ClientCard({ client }: { client: ClientSummary }) {
+function TrashIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 20 20" className="h-4 w-4 fill-current">
+      <path d="M8 2.75A.75.75 0 018.75 2h2.5a.75.75 0 01.75.75V4h3.25a.75.75 0 010 1.5h-.6l-.7 10.1A2 2 0 0111.96 17.5H8.04a2 2 0 01-1.99-1.9L5.35 5.5h-.6a.75.75 0 010-1.5H8V2.75zM6.86 5.5l.69 10a.5.5 0 00.5.5h3.9a.5.5 0 00.5-.5l.69-10H6.86zM8.5 7.5a.6.6 0 01.6.6v5.3a.6.6 0 01-1.2 0V8.1a.6.6 0 01.6-.6zm3 0a.6.6 0 01.6.6v5.3a.6.6 0 01-1.2 0V8.1a.6.6 0 01.6-.6z" />
+    </svg>
+  );
+}
+
+function ClientCard({
+  client,
+  onDelete,
+}: {
+  client: ClientSummary;
+  onDelete: (client: ClientSummary, trigger: HTMLButtonElement) => void;
+}) {
   const risk =
     client.riskLevel === "no_risk" ||
     client.riskLevel === "low" ||
@@ -53,10 +72,10 @@ function ClientCard({ client }: { client: ClientSummary }) {
     ? `${client.degreeTitle}${client.degreeLabel ? ` (${client.degreeLabel})` : ""}`
     : client.degreeLabel ?? "—";
   return (
-    <li>
+    <li className="relative">
       <Link
         href={`/?case=${encodeURIComponent(client.caseId)}`}
-        className="block rounded-2xl border border-line bg-surface/95 px-4 py-3.5 transition hover:border-brand-muted hover:shadow-[0_8px_24px_rgba(146,86,169,0.10)] sm:px-5"
+        className="block rounded-2xl border border-line bg-surface/95 py-3.5 pl-4 pr-12 transition hover:border-brand-muted hover:shadow-[0_8px_24px_rgba(146,86,169,0.10)] sm:pl-5 sm:pr-14"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -108,7 +127,144 @@ function ClientCard({ client }: { client: ClientSummary }) {
           </p>
         ) : null}
       </Link>
+      <button
+        type="button"
+        aria-label={`Delete client ${client.name}`}
+        title="Delete client"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete(client, e.currentTarget);
+        }}
+        className="absolute right-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-full text-ink-faint outline-none transition hover:bg-[#f8ecec] hover:text-[#8a3a3a] focus-visible:ring-2 focus-visible:ring-brand-ring sm:right-3.5"
+      >
+        <TrashIcon />
+      </button>
     </li>
+  );
+}
+
+function ConfirmDeleteDialog({
+  client,
+  deleting,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  client: ClientSummary;
+  deleting: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const deleteRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    cancelRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (!deleting) onCancel();
+        return;
+      }
+      if (e.key === "Tab") {
+        // Focus trap-lite: keep Tab cycling between the two buttons.
+        const first = cancelRef.current;
+        const last = deleteRef.current;
+        if (!first || !last) return;
+        const active = document.activeElement;
+        if (active !== first && active !== last) {
+          e.preventDefault();
+          first.focus();
+        } else if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [deleting, onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#241f2a]/40 px-4 backdrop-blur-[2px]"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !deleting) onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-client-title"
+        aria-describedby="delete-client-desc"
+        className="w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-[0_24px_60px_rgba(36,31,42,0.25)] sm:p-6"
+      >
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f8ecec] text-[#8a3a3a]">
+            <TrashIcon />
+          </span>
+          <div className="min-w-0">
+            <h2 id="delete-client-title" className="text-base font-semibold text-ink">
+              Delete client?
+            </h2>
+            <p className="mt-1 truncate text-sm font-medium text-ink">
+              {client.name}
+              {client.anzscoCode ? (
+                <span className="font-normal text-ink-muted">
+                  {" "}
+                  · {client.anzscoCode}
+                  {client.occupation ? ` ${client.occupation}` : ""}
+                </span>
+              ) : null}
+            </p>
+            <p id="delete-client-desc" className="mt-2 text-sm leading-relaxed text-ink-muted">
+              This permanently deletes all of this client&apos;s documents, career
+              episodes, extracted details, assessment and risk results, and the
+              approval decision. This can&apos;t be undone.
+            </p>
+          </div>
+        </div>
+        {error ? (
+          <p role="alert" className="mt-4 rounded-lg bg-[#f8ecec] px-3 py-2 text-sm text-[#8a3a3a]">
+            Could not delete: {error}
+          </p>
+        ) : null}
+        <div className="mt-6 flex justify-end gap-2.5">
+          <button
+            ref={cancelRef}
+            type="button"
+            disabled={deleting}
+            onClick={onCancel}
+            className="rounded-full border border-line bg-surface px-4 py-2 text-sm font-medium text-ink outline-none transition hover:bg-surface-tint focus-visible:ring-2 focus-visible:ring-brand-ring disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            ref={deleteRef}
+            type="button"
+            disabled={deleting}
+            onClick={onConfirm}
+            className="inline-flex items-center gap-2 rounded-full bg-[#b42318] px-4 py-2 text-sm font-medium text-white outline-none transition hover:bg-[#912018] focus-visible:ring-2 focus-visible:ring-[#e2c4c4] focus-visible:ring-offset-1 disabled:opacity-70"
+          >
+            {deleting ? (
+              <span
+                aria-hidden
+                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
+              />
+            ) : null}
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -119,6 +275,51 @@ export function ClientsPage() {
   const [loadedFilter, setLoadedFilter] = useState<ClientFilter | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<ClientSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteTrigger = useRef<HTMLButtonElement | null>(null);
+
+  function openDelete(client: ClientSummary, trigger: HTMLButtonElement) {
+    deleteTrigger.current = trigger;
+    setDeleteError(null);
+    setPendingDelete(client);
+  }
+
+  function closeDelete() {
+    setPendingDelete(null);
+    setDeleteError(null);
+    deleteTrigger.current?.focus();
+    deleteTrigger.current = null;
+  }
+
+  async function confirmDelete() {
+    const target = pendingDelete;
+    if (!target) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteClientCase(target.caseId);
+      if (getStoredCaseId() === target.caseId) clearStoredCaseId();
+      setData((prev) => {
+        if (!prev) return prev;
+        const counts = { ...prev.counts };
+        counts.all = Math.max(0, counts.all - 1);
+        counts[target.verification] = Math.max(0, counts[target.verification] - 1);
+        return {
+          ...prev,
+          counts,
+          clients: prev.clients.filter((c) => c.caseId !== target.caseId),
+        };
+      });
+      setPendingDelete(null);
+      deleteTrigger.current = null;
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -215,7 +416,7 @@ export function ClientsPage() {
         ) : clients.length ? (
           <ul className={`space-y-3 ${loading ? "opacity-60" : ""}`}>
             {clients.map((c) => (
-              <ClientCard key={c.caseId} client={c} />
+              <ClientCard key={c.caseId} client={c} onDelete={openDelete} />
             ))}
           </ul>
         ) : (
@@ -232,6 +433,15 @@ export function ClientsPage() {
           </p>
         )}
       </div>
+      {pendingDelete ? (
+        <ConfirmDeleteDialog
+          client={pendingDelete}
+          deleting={deleting}
+          error={deleteError}
+          onCancel={closeDelete}
+          onConfirm={() => void confirmDelete()}
+        />
+      ) : null}
     </div>
   );
 }

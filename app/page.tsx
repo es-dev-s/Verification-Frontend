@@ -97,13 +97,9 @@ export default function Home() {
   const [expReading, setExpReading] = useState(false);
   const [eduErrors, setEduErrors] = useState<Partial<Record<DegreeLevel, string>>>({});
   const [expError, setExpError] = useState<string | null>(null);
-  const [eduGeminiRaws, setEduGeminiRaws] = useState<
-    Partial<Record<DegreeLevel, unknown>>
-  >({});
   const [eduParseSources, setEduParseSources] = useState<
     Partial<Record<DegreeLevel, "groq" | "heuristic">>
   >({});
-  const [expGeminiRaw, setExpGeminiRaw] = useState<unknown>(null);
   const [expParseSource, setExpParseSource] = useState<"groq" | "heuristic" | null>(
     null,
   );
@@ -217,9 +213,7 @@ export default function Home() {
         setEditedLevels({});
         setUserEditedExp(false);
         setFromCvOnlyByLevel({});
-        setEduGeminiRaws({});
         setEduParseSources({});
-        setExpGeminiRaw(null);
         setExpParseSource(null);
         setEduErrors({});
         setStaleHint(false);
@@ -536,17 +530,12 @@ export default function Home() {
         }
       >;
       fromCvOnly?: boolean;
-      geminiRaw?: unknown;
       fallback?: boolean;
       flags?: string[];
     };
     const usedHeuristic =
       Boolean(r.fallback) ||
       (Array.isArray(r.flags) && r.flags.includes("heuristics_fallback"));
-    setEduGeminiRaws((prev) => ({
-      ...prev,
-      [degreeLevel]: r.geminiRaw ?? result,
-    }));
     setEduParseSources((prev) => ({
       ...prev,
       [degreeLevel]: usedHeuristic ? "heuristic" : "groq",
@@ -615,14 +604,12 @@ export default function Home() {
   function applyExperienceResult(result: unknown) {
     const r = result as {
       rows?: ExperienceRow[];
-      geminiRaw?: unknown;
       fallback?: boolean;
       flags?: string[];
     };
     const usedHeuristic =
       Boolean(r.fallback) ||
       (Array.isArray(r.flags) && r.flags.includes("heuristics_fallback"));
-    setExpGeminiRaw(r.geminiRaw ?? result);
     setExpParseSource(usedHeuristic ? "heuristic" : "groq");
     if (r.rows?.length) {
       setExperience(
@@ -975,7 +962,6 @@ export default function Home() {
                 ready={levelEduReady(level)}
                 blocked={levelEduBlocked(level)}
                 error={eduErrors[level] ?? null}
-                geminiRaw={eduGeminiRaws[level]}
                 parseSource={eduParseSources[level] ?? null}
                 onRead={() => void onReadEducation(level)}
                 onChange={(key, value) => updateQualification(level, key, value)}
@@ -1012,12 +998,6 @@ export default function Home() {
           />
           {expError ? (
             <p role="alert" className="mb-3 text-sm text-[#b45309]">{expError}</p>
-          ) : null}
-          {expGeminiRaw != null ? (
-            <DebugJson
-              title={`${parseSourceLabel(expParseSource ?? "groq")} raw (experience)`}
-              data={expGeminiRaw}
-            />
           ) : null}
           <div className="space-y-3">
             {experience.map((row, index) => (
@@ -1132,7 +1112,6 @@ function EducationBlock({
   ready,
   blocked,
   error,
-  geminiRaw,
   parseSource,
   onRead,
   onChange,
@@ -1146,7 +1125,6 @@ function EducationBlock({
   ready: boolean;
   blocked: boolean;
   error: string | null;
-  geminiRaw: unknown;
   parseSource: "groq" | "heuristic" | null;
   onRead: () => void;
   onChange: <K extends keyof Bachelors>(key: K, value: Bachelors[K]) => void;
@@ -1185,12 +1163,6 @@ function EducationBlock({
         }
       />
       {error ? <p role="alert" className="mb-3 text-sm text-[#b45309]">{error}</p> : null}
-      {geminiRaw != null ? (
-        <DebugJson
-          title={`${parseSourceLabel(parseSource ?? "groq")} raw (${label} education)`}
-          data={geminiRaw}
-        />
-      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
           className="sm:col-span-2"
@@ -1361,15 +1333,12 @@ function DocRow({
   doc: CaseDocument;
   onDelete: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const status =
     doc.status === "DONE"
       ? "done"
       : doc.status === "FAILED"
         ? "failed"
         : "processing";
-  const text = (doc.text ?? "").trim();
-  const canShowText = doc.status === "DONE" && text.length > 0;
   const levelLabel =
     doc.degreeLevel && DEGREE_LEVEL_LABELS[doc.degreeLevel]
       ? DEGREE_LEVEL_LABELS[doc.degreeLevel]
@@ -1386,64 +1355,23 @@ function DocRow({
           <>
             {doc.type}
             {levelLabel ? ` · ${levelLabel}` : ""}
-            {doc.extractionMethod ? ` · ${doc.extractionMethod}` : ""}
-            {text ? ` · ${text.length} chars` : ""}
           </>
         }
         actions={
-          <>
-            {canShowText ? (
-              <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                aria-expanded={open}
-                className={`rounded-full px-2 py-1 text-xs font-medium text-brand hover:bg-brand-soft ${FOCUS_RING}`}
-              >
-                {open ? "Hide text" : "Text"}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onDelete}
-              aria-label={`Delete ${doc.originalName}`}
-              title="Delete"
-              className={`flex h-7 w-7 items-center justify-center rounded-full text-ink-muted hover:bg-[#f8ecec] hover:text-[#8a3a3a] ${FOCUS_RING}`}
-            >
-              <svg aria-hidden viewBox="0 0 20 20" className="h-3.5 w-3.5 fill-current">
-                <path d="M5.3 4.2L10 8.9l4.7-4.7 1.1 1.1-4.7 4.7 4.7 4.7-1.1 1.1-4.7-4.7-4.7 4.7-1.1-1.1 4.7-4.7-4.7-4.7z" />
-              </svg>
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label={`Delete ${doc.originalName}`}
+            title="Delete"
+            className={`flex h-7 w-7 items-center justify-center rounded-full text-ink-muted hover:bg-[#f8ecec] hover:text-[#8a3a3a] ${FOCUS_RING}`}
+          >
+            <svg aria-hidden viewBox="0 0 20 20" className="h-3.5 w-3.5 fill-current">
+              <path d="M5.3 4.2L10 8.9l4.7-4.7 1.1 1.1-4.7 4.7 4.7 4.7-1.1 1.1-4.7-4.7-4.7 4.7-1.1-1.1 4.7-4.7-4.7-4.7z" />
+            </svg>
+          </button>
         }
-      >
-        {open && canShowText ? (
-          <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-[#111827] p-3 text-[11px] leading-relaxed text-[#e5eef8] whitespace-pre-wrap break-words">
-            {text}
-          </pre>
-        ) : null}
-      </FileChip>
+      />
     </li>
-  );
-}
-
-function DebugJson({ title, data }: { title: string; data: unknown }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <div className="mb-3 rounded-xl border border-dashed border-line-strong bg-surface-tint p-3">
-      <button
-        type="button"
-        className="mb-2 flex w-full items-center justify-between text-left text-xs font-semibold uppercase tracking-wide text-ink-muted"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span>{title}</span>
-        <span>{open ? "Hide" : "Show"}</span>
-      </button>
-      {open ? (
-        <pre className="max-h-72 overflow-auto rounded-lg bg-[#111827] p-3 text-[11px] leading-relaxed text-[#e5eef8] whitespace-pre-wrap break-words">
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      ) : null}
-    </div>
   );
 }
 

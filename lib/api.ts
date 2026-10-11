@@ -35,6 +35,11 @@ export function setStoredCaseId(id: string): void {
   localStorage.setItem(CASE_KEY, id);
 }
 
+export function clearStoredCaseId(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(CASE_KEY);
+}
+
 async function api<T>(
   path: string,
   init: RequestInit = {},
@@ -289,4 +294,9 @@ export async function listClients(
   status: import("./types").ClientFilter = "all",
 ): Promise<import("./types").ClientsResponse> {
   return api(`/clients?status=${encodeURIComponent(status)}`);
+}
+
+/** Permanently delete a client (case) and all of its data. */
+export async function deleteClientCase(caseId: string): Promise<void> {
+  await api(`/cases/${encodeURIComponent(caseId)}`, { method: "DELETE" });
 }
