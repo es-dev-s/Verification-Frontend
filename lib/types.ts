@@ -334,8 +334,6 @@ export type AssessmentResult = {
   candidates?: AnzscoCandidate[];
   extractedSubjects?: ExtractedSubjectRow[];
   explanation: string;
-  /** User-facing warnings (e.g. incomplete subject extraction). Absent when the run was clean. */
-  warnings?: string[];
   risk?: RiskAssessmentResult;
 };
 

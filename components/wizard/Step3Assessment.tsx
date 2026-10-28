@@ -612,21 +612,6 @@ export function Step3Assessment({
 
       {assessment && !loading ? (
         <div className="space-y-4">
-          {assessment.warnings?.length ? (
-            <div
-              role="alert"
-              className="rounded-2xl border border-line bg-[var(--warning-soft)] px-4 py-3 text-[var(--warning-ink)]"
-            >
-              <p className="text-sm font-medium">
-                This assessment may be incomplete
-              </p>
-              <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-xs leading-relaxed">
-                {assessment.warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
           <section
             aria-label="Extracted subjects"
             className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
