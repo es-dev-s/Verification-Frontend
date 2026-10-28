@@ -179,10 +179,19 @@ export const CAREER_EPISODE_EVIDENCE_OPTIONS: Array<{
   { field: "hasQuantifiableOutcomes", label: "Quantifiable outcomes" },
 ];
 
+/** Level a transcript subject row was scored under (Diploma levels are their own group). */
+export type SubjectQualification =
+  | "bachelor"
+  | "master"
+  | "diploma"
+  | "advanced_diploma"
+  | "associate_degree"
+  | "unknown";
+
 export type SubjectMatchRow = {
   transcriptName: string;
   transcriptCode: string | null;
-  qualification: "bachelor" | "master" | "unknown";
+  qualification: SubjectQualification;
   rubricSubject: string | null;
   tier: "tier1" | "tier2" | "tier3" | null;
   category: string | null;
@@ -197,7 +206,7 @@ export type MissingSubjectsByTier = {
 };
 
 export type TranscriptSourceInfo = {
-  kind: "bachelor" | "master" | "master_fallback" | "mixed" | "unknown";
+  kind: "bachelor" | "master" | "master_fallback" | "mixed" | "diploma" | "unknown";
   label: string;
 };
 
@@ -219,6 +228,55 @@ export type WorkExperienceCandidateAnalysis = {
   analysis: string;
   confidenceScoreBefore: number;
   confidenceScoreAfter: number;
+};
+
+/** Step 1 routing: which occupation family the qualification was scored as. */
+export type RoutingInfo = {
+  routes: Array<"professional" | "draftsperson_academic" | "vocational" | "unknown">;
+  label: string;
+  basedOn: string;
+  /** One-line note: "Scored as: <route> — based on <title>". */
+  note: string;
+  notes: string[];
+  qualifications: Array<{
+    title: string | null;
+    level: string;
+    route: string;
+    reason: string;
+  }>;
+};
+
+export type CoreBand = "no_risk" | "low_risk" | "medium_risk" | "high_risk";
+
+export type VocationalUnitMatch = {
+  unitId: string;
+  code: string;
+  title: string;
+  transcriptCode: string | null;
+  transcriptName: string;
+  matchType: "exact" | "release" | "equivalent" | "typo" | "title";
+  note: string;
+  confidence: number;
+  source?: string;
+};
+
+/** Unit-code (vocational) assessment detail for one occupation. */
+export type VocationalAssessmentDetail = {
+  occupationId: string;
+  qualificationCodes: string[];
+  coreMatched: number;
+  coreTotal: number;
+  coreBand: CoreBand;
+  thresholds: { noRisk: number; lowRisk: number; mediumRisk: number };
+  matchedCore: VocationalUnitMatch[];
+  missingCore: Array<{ unitId: string; code: string; title: string }>;
+  electivesFound: Array<{ code: string; name: string }>;
+  electiveStatus: "not_assessed" | "met" | "not_met";
+  electiveMinimum: number | null;
+  electiveNote: string;
+  qualificationMet: boolean;
+  qualificationNote: string;
+  flags: string[];
 };
 
 export type AnzscoCandidate = {
@@ -243,9 +301,22 @@ export type AnzscoCandidate = {
   unmatched: Array<{
     name: string;
     code: string | null;
-    qualification: "bachelor" | "master" | "unknown";
+    qualification: SubjectQualification;
   }>;
   subjectCatalog?: RubricSubjectCatalogEntry[];
+  /** Step 1 qualification-check notes (e.g. diploma-only, field to confirm). */
+  qualificationNotes?: string[];
+  /** True when the qualification check capped this occupation at conditional. */
+  qualificationCapped?: boolean;
+  /** "vocational_units" for unit-code occupations (e.g. 312311). */
+  assessmentFlow?: "academic" | "vocational_units";
+  tier1Outcome?: string | null;
+  tier2Outcome?: string | null;
+  /** Determination from the Step 3 bands (before surfacing as no_match). */
+  bandDetermination?: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
+  gateDowngraded?: boolean;
+  routeCapped?: boolean;
+  vocational?: VocationalAssessmentDetail | null;
 };
 
 export type RiskLevel = "no_risk" | "low" | "medium" | "high";
@@ -295,6 +366,16 @@ export type RiskAssessmentResult = {
   workExperienceDelta: number;
   overallPct: number;
   riskLevel: RiskLevel;
+  /** Level from the Step 3 determination + bands, before the historical modifier. */
+  baseRiskLevel?: RiskLevel;
+  /** Plain-language basis, e.g. "Step 3: Verified – Low Risk (No Risk, Low Risk)". */
+  riskBasis?: string;
+  stepThreeDetermination?: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
+  historicalModifierApplied?: boolean;
+  riskNotes?: string[];
+  assessmentFlow?: "academic" | "vocational_units";
+  /** Competence check disagrees with the band (band stands; assessor to review). */
+  competenceConflict?: boolean;
   reducingRisk: string[];
   increasingRisk: string[];
   missingMajorDomains: string;
@@ -321,18 +402,23 @@ export type AssessmentResult = {
   tier2Outcome: string | null;
   tier3GateMet: boolean;
   workExperienceBoost: boolean;
-  qualificationsUsed: Array<"bachelor" | "master" | "unknown">;
+  qualificationsUsed: Array<SubjectQualification>;
   matches: SubjectMatchRow[];
   unmatched: Array<{
     name: string;
     code: string | null;
-    qualification: "bachelor" | "master" | "unknown";
+    qualification: SubjectQualification;
   }>;
   missingSubjects?: MissingSubjectsByTier;
   transcriptSource?: TranscriptSourceInfo;
   mastersFallbackUsed?: boolean;
   candidates?: AnzscoCandidate[];
   extractedSubjects?: ExtractedSubjectRow[];
+  qualificationNotes?: string[];
+  /** Step 1 routing (which occupations were ranked). */
+  routing?: RoutingInfo;
+  assessmentFlow?: "academic" | "vocational_units";
+  bandDetermination?: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
   explanation: string;
   risk?: RiskAssessmentResult;
 };
@@ -343,7 +429,7 @@ export type ExtractedSubjectRow = {
   credits?: string | null;
   grade?: string | null;
   yearOrSemester?: string | null;
-  qualification: "bachelor" | "master" | "unknown";
+  qualification: SubjectQualification;
   sourceSnippet?: string | null;
   isRepeat?: boolean;
 };

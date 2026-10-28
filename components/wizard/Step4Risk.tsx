@@ -577,7 +577,96 @@ function domainCountClass(kind: DomainRow["kind"], count: number): string {
   }
 }
 
+function BandRiskReasoningCard({
+  risk,
+  basis,
+}: {
+  risk: RiskAssessmentResult;
+  basis: string;
+}) {
+  const finalBadge = riskBadge(risk.riskLevel);
+  const baseBadge = riskBadge(risk.baseRiskLevel ?? risk.riskLevel);
+  const hist = risk.historical;
+  const vocational = risk.assessmentFlow === "vocational_units";
+  const items: Array<{ key: string; label: string; text: string }> = [
+    {
+      key: "step3",
+      label: "Step 3 result",
+      text: `${basis} gives ${baseBadge.label.toLowerCase()}.`,
+    },
+    {
+      key: "historical",
+      label: "Historical outcomes",
+      text: risk.historicalModifierApplied
+        ? `${formatPct(hist.positivePct)} positive across ${hist.totalCases} past cases (at least 20 cases and below 40%), so the rating moved one level worse.`
+        : hist.totalCases > 0
+          ? `${formatPct(hist.positivePct)} positive across ${hist.totalCases} past case${hist.totalCases === 1 ? "" : "s"} — context only; it moves the rating only with at least 20 cases and below 40% positive.`
+          : "No comparable historical cases — context only.",
+    },
+    {
+      key: "coverage",
+      label: "Subject coverage",
+      text: vocational
+        ? `Core units at ${formatPct(risk.corePct)} (shown for reference; the core-unit band above decides).`
+        : `Fundamentals at ${formatPct(risk.fundamentalPct)} and core at ${formatPct(risk.corePct)} (shown for reference; the Step 3 bands above decide).`,
+    },
+  ];
+  if (risk.workExperienceBoost) {
+    items.push({
+      key: "work",
+      label: "Work experience",
+      text: "Related work experience noted — context only; it does not change the rating.",
+    });
+  }
+  const otherNotes = (risk.riskNotes ?? []).filter(
+    (n) => !/^Historical outcomes|^Moved one level worse|^Related work experience/.test(n),
+  );
+
+  return (
+    <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Why this rating
+          </p>
+          <p className="mt-1 text-sm leading-snug text-ink">
+            The rating follows the Step 3 result; historical outcomes can move it
+            one level worse.
+          </p>
+        </div>
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${finalBadge.className}`}
+        >
+          {finalBadge.label}
+        </span>
+      </div>
+      <ul className="mt-3 space-y-2 border-t border-line pt-3">
+        {items.map((item) => (
+          <li key={item.key} className="text-sm leading-snug text-ink">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+              {item.label}
+            </span>
+            <p className="mt-0.5">{item.text}</p>
+          </li>
+        ))}
+        {otherNotes.map((note) => (
+          <li key={note} className="text-sm leading-snug text-ink">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+              Note
+            </span>
+            <p className="mt-0.5">{note}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Older saved results (before band-based risk): the weighted-alignment explanation. */
 function RiskReasoningCard({ risk }: { risk: RiskAssessmentResult }) {
+  if (risk.riskBasis) {
+    return <BandRiskReasoningCard risk={risk} basis={risk.riskBasis} />;
+  }
   const finalBadge = riskBadge(risk.riskLevel);
   const finalLabel = finalBadge.label.toLowerCase();
   const academicPct =
@@ -758,7 +847,7 @@ export function Step4Risk({
           Risk analysis
         </h1>
         <p className="mt-2 max-w-xl text-[0.95rem] leading-relaxed text-ink-muted">
-          Alignment from fundamentals, core subjects, and historical outcomes.
+          Risk follows the Step 3 result; historical outcomes can move it one level.
         </p>
       </header>
 
@@ -766,7 +855,7 @@ export function Step4Risk({
         <div className="rounded-2xl border border-line bg-surface/95 p-8 text-center">
           <p className="text-sm font-medium text-ink">Calculating risk…</p>
           <p className="mt-2 text-xs text-ink-muted">
-            Scoring subjects, historical cases, and work experience.
+            Reading the Step 3 result and historical cases.
           </p>
         </div>
       ) : null}
@@ -808,6 +897,26 @@ export function Step4Risk({
               ) : null}
             </div>
 
+            {risk.riskBasis ? (
+              <div className="mt-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+                  Based on
+                </p>
+                <p className="mt-1 text-base font-semibold tracking-tight text-ink">
+                  {risk.riskBasis}
+                </p>
+                {risk.historicalModifierApplied ? (
+                  <p className="mt-1 text-sm text-ink-muted">
+                    Moved one level worse by historical outcomes.
+                  </p>
+                ) : null}
+                <p className="mt-1 text-sm text-ink-faint">
+                  {risk.workExperienceBoost
+                    ? "Related work experience noted (context only)"
+                    : "No related work experience noted"}
+                </p>
+              </div>
+            ) : (
             <div className="mt-5 flex flex-wrap items-end gap-x-6 gap-y-2">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
@@ -836,8 +945,36 @@ export function Step4Risk({
                 </p>
               )}
             </div>
+            )}
           </section>
 
+          {risk.riskBasis ? (
+            <div
+              className={`grid gap-3 ${risk.assessmentFlow === "vocational_units" ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}
+            >
+              {risk.assessmentFlow === "vocational_units" ? null : (
+                <ScoreTile
+                  label="Fundamentals"
+                  value={risk.fundamentalPct}
+                  hint="For reference"
+                />
+              )}
+              <ScoreTile
+                label={risk.assessmentFlow === "vocational_units" ? "Core units" : "Core"}
+                value={risk.corePct}
+                hint="For reference"
+              />
+              <ScoreTile
+                label="Historical"
+                value={risk.historicalPct}
+                hint={
+                  risk.historical.totalCases > 0
+                    ? `${risk.historical.positive}/${risk.historical.totalCases} positive · ${risk.historicalModifierApplied ? "moved rating one level" : "context only"}`
+                    : "No cases · context only"
+                }
+              />
+            </div>
+          ) : (
           <div className="grid gap-3 sm:grid-cols-3">
             <ScoreTile
               label="Fundamentals"
@@ -855,6 +992,7 @@ export function Step4Risk({
               }
             />
           </div>
+          )}
 
           <PrecedentCheckCard
             precedent={precedent}
@@ -945,6 +1083,12 @@ export function Step4Risk({
                 })}
               </div>
             </div>
+            {risk.competenceConflict && risk.competenceSource !== "manual" ? (
+              <p className="mt-3 border-t border-line pt-3 text-sm leading-relaxed text-ink">
+                The competence suggestion differs from the {riskBadge(risk.riskLevel).label.toLowerCase()} rating.
+                The rating stands — please review and set competence.
+              </p>
+            ) : null}
             {risk.insight ? (
               <p className="mt-3 border-t border-line pt-3 text-sm leading-relaxed text-ink-muted">
                 {risk.insight}

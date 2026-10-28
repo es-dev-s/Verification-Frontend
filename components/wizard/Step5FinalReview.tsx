@@ -117,7 +117,9 @@ function buildOverallReview(
 
   if (risk) {
     lines.push(
-      `${name} is rated ${riskBadge(risk.riskLevel).label.toLowerCase()} with ${formatPct(risk.overallPct)} overall alignment (${riskBandRange(risk.riskLevel)} band).`,
+      risk.riskBasis
+        ? `${name} is rated ${riskBadge(risk.riskLevel).label.toLowerCase()}, based on ${risk.riskBasis}${risk.historicalModifierApplied ? " and moved one level worse by historical outcomes" : ""}.`
+        : `${name} is rated ${riskBadge(risk.riskLevel).label.toLowerCase()} with ${formatPct(risk.overallPct)} overall alignment (${riskBandRange(risk.riskLevel)} band).`,
     );
   } else if (occupation) {
     lines.push(`${name} has no risk result yet — run Step 4 to complete the review.`);
@@ -147,10 +149,17 @@ function buildOverallReview(
       lines.push(
         `Related work experience added ${risk.workExperienceDelta} pts (from ${formatPct(risk.overallPctBeforeWork)}).`,
       );
+    } else if (risk.workExperienceBoost && risk.riskBasis) {
+      lines.push("Related work experience is noted as context only.");
     }
     lines.push(
       `Competency outcome: ${competenceLabel(risk.competence)} (${risk.competenceSource === "manual" ? "manually set" : "AI suggestion"}).`,
     );
+    if (risk.competenceConflict && risk.competenceSource !== "manual") {
+      lines.push(
+        "The competence suggestion differs from the risk rating; the rating stands and needs assessor review.",
+      );
+    }
   }
   return lines;
 }
@@ -275,7 +284,9 @@ export function Step5FinalReview({
                     {competenceLabel(risk.competence)}
                   </span>
                   <span className="text-xs tabular-nums text-ink-muted sm:pt-1">
-                    {formatPct(risk.overallPct)} overall alignment
+                    {risk.riskBasis
+                      ? risk.riskBasis
+                      : `${formatPct(risk.overallPct)} overall alignment`}
                   </span>
                 </div>
               ) : null}
@@ -450,11 +461,29 @@ export function Step5FinalReview({
         <section className={CARD}>
           <SectionHeader
             title="Risk assessment"
-            hint="Alignment score and risk level from Step 4"
+            hint="Risk level from Step 4"
           />
           {risk ? (
             <>
               <div className="flex flex-wrap items-end justify-between gap-3">
+                {risk.riskBasis ? (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+                    Based on
+                  </p>
+                  <p className="mt-1 text-base font-semibold tracking-tight text-ink">
+                    {risk.riskBasis}
+                  </p>
+                  <p className="mt-0.5 text-xs text-ink-muted">
+                    {risk.historicalModifierApplied
+                      ? "Moved one level worse by historical outcomes. "
+                      : ""}
+                    {risk.workExperienceBoost
+                      ? "Related work experience noted (context only)"
+                      : "No related work experience noted"}
+                  </p>
+                </div>
+                ) : (
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                     Overall alignment
@@ -468,6 +497,7 @@ export function Step5FinalReview({
                       : "No related work experience boost"}
                   </p>
                 </div>
+                )}
                 {badge ? (
                   <span
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.className}`}
@@ -480,21 +510,35 @@ export function Step5FinalReview({
               <div className="mt-4 grid gap-2 sm:grid-cols-3">
                 <MetricTile
                   label="Fundamentals"
-                  value={formatPct(risk.fundamentalPct)}
-                  hint="30% weight"
+                  value={
+                    risk.assessmentFlow === "vocational_units"
+                      ? "—"
+                      : formatPct(risk.fundamentalPct)
+                  }
+                  hint={
+                    risk.assessmentFlow === "vocational_units"
+                      ? "Not used (unit-code assessment)"
+                      : risk.riskBasis
+                        ? "For reference"
+                        : "30% weight"
+                  }
                 />
                 <MetricTile
-                  label="Core"
+                  label={risk.assessmentFlow === "vocational_units" ? "Core units" : "Core"}
                   value={formatPct(risk.corePct)}
-                  hint="50% weight"
+                  hint={risk.riskBasis ? "For reference" : "50% weight"}
                 />
                 <MetricTile
                   label="Historical"
                   value={formatPct(risk.historicalPct)}
                   hint={
-                    risk.historical.totalCases > 0
-                      ? `${risk.historical.positive}/${risk.historical.totalCases} positive · 20% weight`
-                      : "No cases · 20% weight"
+                    risk.riskBasis
+                      ? risk.historical.totalCases > 0
+                        ? `${risk.historical.positive}/${risk.historical.totalCases} positive · ${risk.historicalModifierApplied ? "moved rating one level" : "context only"}`
+                        : "No cases · context only"
+                      : risk.historical.totalCases > 0
+                        ? `${risk.historical.positive}/${risk.historical.totalCases} positive · 20% weight`
+                        : "No cases · 20% weight"
                   }
                 />
               </div>

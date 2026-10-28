@@ -4,9 +4,39 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   AnzscoCandidate,
   AssessmentResult,
+  CoreBand,
   RubricSubjectCatalogEntry,
   SubjectMatchRow,
+  VocationalAssessmentDetail,
+  VocationalUnitMatch,
 } from "@/lib/types";
+
+const CORE_BAND_LABEL: Record<CoreBand, string> = {
+  no_risk: "No Risk",
+  low_risk: "Low Risk",
+  medium_risk: "Medium Risk",
+  high_risk: "High Risk",
+};
+
+function electiveStatusLabel(v: VocationalAssessmentDetail): string {
+  if (v.electiveStatus === "not_assessed") return "Not assessed – minimum not set";
+  return v.electiveStatus === "met" ? "Met" : "Not met";
+}
+
+function unitMatchLabel(m: VocationalUnitMatch): string {
+  switch (m.matchType) {
+    case "exact":
+      return "Code";
+    case "release":
+      return `Release ${m.transcriptCode ?? ""}`.trim();
+    case "equivalent":
+      return `Via ${m.transcriptCode ?? "equivalent code"}`;
+    case "typo":
+      return `Typo ${m.transcriptCode ?? ""}`.trim();
+    case "title":
+      return "Title only";
+  }
+}
 
 function coverageLabel(matched: number, expected: number, pct: number): string {
   const rounded = Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
@@ -85,6 +115,14 @@ function formatConfidencePct(score: number): string {
 
 function recommendationSummary(c: AnzscoCandidate): string {
   const score = resolveConfidenceScore(c);
+  if (c.vocational) {
+    const v = c.vocational;
+    const core = `core units ${v.coreMatched}/${v.coreTotal} (${CORE_BAND_LABEL[v.coreBand]})`;
+    const electives = `electives ${electiveStatusLabel(v).toLowerCase()}`;
+    return c.recommended
+      ? `Recommended ${c.title} (${c.anzscoCode}) at ${formatConfidencePct(score)} confidence — ${core}, ${electives}.`
+      : `Highest coverage is ${c.title} (${c.anzscoCode}) at ${formatConfidencePct(score)}, but it is not strong enough to recommend — ${core}.`;
+  }
   const t1 = coverageLabel(
     c.foundationalMatched,
     c.foundationalExpected,
@@ -425,6 +463,146 @@ function SubjectVariantsModal({
   );
 }
 
+/** Step 3 breakdown for unit-code occupations (e.g. 312311). */
+function VocationalBreakdown({ detail }: { detail: VocationalAssessmentDetail }) {
+  const t = detail.thresholds;
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-line bg-surface-subtle px-3.5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Core units
+          </p>
+          <p className="mt-1 text-sm font-medium text-ink">
+            {detail.coreMatched}/{detail.coreTotal} · {CORE_BAND_LABEL[detail.coreBand]}
+          </p>
+          <p className="mt-0.5 text-[11px] text-ink-faint">
+            No Risk {t.noRisk}–{detail.coreTotal} · Low {t.lowRisk}–{t.noRisk - 1} · Medium{" "}
+            {t.mediumRisk}–{t.lowRisk - 1} · High 0–{t.mediumRisk - 1}
+          </p>
+        </div>
+        <div className="rounded-xl border border-line bg-surface-subtle px-3.5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Electives
+          </p>
+          <p className="mt-1 text-sm font-medium text-ink">{electiveStatusLabel(detail)}</p>
+          <p className="mt-0.5 text-[11px] text-ink-faint">{detail.electiveNote}</p>
+        </div>
+        <div className="rounded-xl border border-line bg-surface-subtle px-3.5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Qualification
+          </p>
+          <p className="mt-1 text-sm font-medium text-ink">
+            {detail.qualificationMet ? "Accepted" : "To confirm"}
+          </p>
+          <p className="mt-0.5 text-[11px] text-ink-faint">{detail.qualificationNote}</p>
+        </div>
+      </div>
+
+      {detail.flags.length ? (
+        <ul className="space-y-1 rounded-xl border border-line bg-[var(--warning-soft)] px-3.5 py-3">
+          {detail.flags.map((f, i) => (
+            <li key={`vf-${i}`} className="text-[12px] leading-snug text-[var(--warning-ink)]">
+              {f}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
+        <div className="flex h-[26rem] flex-col rounded-xl border border-line bg-surface-subtle p-3.5">
+          <h3 className="mb-3 shrink-0 text-sm font-semibold text-ink">
+            Matched core units ({detail.matchedCore.length})
+          </h3>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+            {detail.matchedCore.length ? (
+              <ul className="space-y-2">
+                {detail.matchedCore.map((m) => (
+                  <li key={`vm-${m.unitId}`} className="rounded-lg bg-surface px-2.5 py-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium text-ink">
+                        <span className="font-mono">{m.code}</span> — {m.title}
+                      </p>
+                      <span className="shrink-0 rounded-md bg-surface-tint px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
+                        {unitMatchLabel(m)}
+                      </span>
+                    </div>
+                    {m.matchType !== "exact" ? (
+                      <p className="mt-0.5 text-[11px] text-ink-muted">
+                        {m.note}
+                        {m.source ? (
+                          <>
+                            {" "}
+                            <a
+                              href={m.source}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline underline-offset-2"
+                            >
+                              source
+                            </a>
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyListNote text="No core units matched" />
+            )}
+          </div>
+        </div>
+
+        <div className="flex h-[26rem] flex-col rounded-xl border border-line bg-surface-subtle p-3.5">
+          <h3 className="mb-3 shrink-0 text-sm font-semibold text-ink">
+            Missing core units ({detail.missingCore.length})
+          </h3>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+            {detail.missingCore.length ? (
+              <ul className="space-y-1.5">
+                {detail.missingCore.map((u) => (
+                  <li
+                    key={`vx-${u.unitId}`}
+                    className="rounded-lg bg-surface px-2.5 py-2 text-xs text-ink-muted"
+                  >
+                    <span className="font-mono">{u.code}</span> — {u.title}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyListNote text="All core units found" />
+            )}
+          </div>
+        </div>
+
+        <div className="flex h-[26rem] flex-col rounded-xl border border-line bg-surface-subtle p-3.5">
+          <h3 className="mb-3 shrink-0 text-sm font-semibold text-ink">
+            Electives found ({detail.electivesFound.length})
+          </h3>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+            {detail.electivesFound.length ? (
+              <ul className="space-y-1.5">
+                {detail.electivesFound.map((e) => (
+                  <li
+                    key={`ve-${e.code}`}
+                    className="rounded-lg bg-surface px-2.5 py-2 text-xs text-ink-muted"
+                  >
+                    <span className="font-mono">{e.code}</span>
+                    {e.name ? ` — ${e.name}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyListNote text="No other unit codes on the transcript" />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function variantsEmptyMessage(catalog: RubricSubjectCatalogEntry | undefined): string {
   if (!catalog) return "Variant list not available for this subject.";
   if (!catalog.variants.length) return "No naming variants listed for this subject.";
@@ -680,6 +858,24 @@ export function Step3Assessment({
             </section>
           ) : null}
 
+          {assessment.routing?.note ? (
+            <section
+              aria-label="Qualification route"
+              className="rounded-xl border border-line bg-surface/95 px-4 py-2.5"
+            >
+              <p className="text-sm leading-snug text-ink">{assessment.routing.note}</p>
+              {assessment.routing.notes.length ? (
+                <ul className="mt-1 space-y-0.5">
+                  {assessment.routing.notes.map((note, i) => (
+                    <li key={`route-${i}`} className="text-[12px] leading-snug text-ink-muted">
+                      {note}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
+          ) : null}
+
           {/* 1. Top candidates — bento comparison row */}
           <section aria-label="Top ANZSCO candidates">
             <div className="mb-2 flex items-center justify-between gap-3">
@@ -753,6 +949,25 @@ export function Step3Assessment({
                         </span>
                       )}
                     </div>
+                    {c.vocational ? (
+                      <dl className="mt-3 space-y-1.5 text-xs text-ink-muted">
+                        <div className="flex justify-between gap-2">
+                          <dt className="text-ink-muted">Core units</dt>
+                          <dd className="font-mono tabular-nums">
+                            {c.vocational.coreMatched}/{c.vocational.coreTotal} ·{" "}
+                            {CORE_BAND_LABEL[c.vocational.coreBand]}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt className="text-ink-muted">Electives</dt>
+                          <dd className="text-right">{electiveStatusLabel(c.vocational)}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <dt className="text-ink-muted">Qualification</dt>
+                          <dd>{c.vocational.qualificationMet ? "Accepted" : "To confirm"}</dd>
+                        </div>
+                      </dl>
+                    ) : (
                     <dl className="mt-3 space-y-1.5 text-xs text-ink-muted">
                       <div className="flex justify-between gap-2">
                         <dt className="text-ink-muted">Tier 1</dt>
@@ -783,6 +998,7 @@ export function Step3Assessment({
                         </dd>
                       </div>
                     </dl>
+                    )}
                   </button>
                 );
               })}
@@ -870,11 +1086,36 @@ export function Step3Assessment({
                     </p>
                   ) : null}
                   <p className="mt-1.5 text-[11px] text-ink-faint">
-                    From confirmed work on the case — separate from Tier 1 /
-                    Tier 2 coverage
+                    {selected.vocational
+                      ? "From confirmed work on the case — separate from unit-code coverage"
+                      : "From confirmed work on the case — separate from Tier 1 / Tier 2 coverage"}
                   </p>
                 </section>
               </div>
+
+              {selected.qualificationNotes?.length ? (
+                <section
+                  aria-label="Qualification check"
+                  className="rounded-2xl border border-line bg-[var(--warning-soft)] px-4 py-3.5"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--warning-ink)]">
+                    Qualification check
+                    {selected.qualificationCapped
+                      ? " · capped at conditional"
+                      : ""}
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {selected.qualificationNotes.map((note, i) => (
+                      <li
+                        key={`${i}-${note}`}
+                        className="text-sm leading-snug text-[var(--warning-ink)]"
+                      >
+                        {note}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
 
               {/* 2. Full breakdown — three lists */}
               <section
@@ -890,8 +1131,9 @@ export function Step3Assessment({
                       {selected.anzscoCode} — {selected.title}
                     </h2>
                     <p className="mt-1 text-[11px] text-ink-faint">
-                      Click a subject to see matched and unmatched naming
-                      variants
+                      {selected.vocational
+                        ? "Core units matched by training-package code"
+                        : "Click a subject to see matched and unmatched naming variants"}
                     </p>
                   </div>
                   <button
@@ -912,6 +1154,9 @@ export function Step3Assessment({
                   </button>
                 </div>
 
+                {selected.vocational ? (
+                  <VocationalBreakdown detail={selected.vocational} />
+                ) : (
                 <div className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
                   {/* Matched */}
                   <div className="flex h-[26rem] flex-col rounded-xl border border-line bg-surface-subtle p-3.5">
@@ -1109,6 +1354,7 @@ export function Step3Assessment({
                     </div>
                   </div>
                 </div>
+                )}
               </section>
 
               {confirmedCode ? (
