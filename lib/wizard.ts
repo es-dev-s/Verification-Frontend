@@ -1,7 +1,7 @@
 import type { DegreeLevel, ExperienceRow, Qualification } from "./types";
 import { DEGREE_LEVEL_LABELS, sortDegreeLevels } from "./types";
 
-export type WizardStepId = 1 | 2 | 3 | 4 | 5 | 6;
+export type WizardStepId = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export type WizardStepDef = {
   id: WizardStepId;
@@ -17,27 +17,32 @@ export const WIZARD_STEPS: WizardStepDef[] = [
   },
   {
     id: 2,
-    title: "2. Confirmation",
-    description: "Review details and engineering-titled degree",
+    title: "2. Transcript data",
+    description: "Duration, credits, and final-year project",
   },
   {
     id: 3,
-    title: "3. Assessment",
-    description: "ANZSCO subject matching",
+    title: "3. Verify details",
+    description: "Review details and check the study duration",
   },
   {
     id: 4,
-    title: "4. Risk",
-    description: "Alignment score and risk level",
+    title: "4. Assessment",
+    description: "ANZSCO subject matching",
   },
   {
     id: 5,
-    title: "5. Final review",
-    description: "Verify occupation, risk, and competency",
+    title: "5. Risk",
+    description: "Alignment score and risk level",
   },
   {
     id: 6,
-    title: "6. Approval",
+    title: "6. Final review",
+    description: "Verify occupation, risk, and competency",
+  },
+  {
+    id: 7,
+    title: "7. Approval",
     description: "Approve or reject with a comment",
   },
 ];
@@ -62,7 +67,7 @@ export type ConfirmationQualification = {
   durationYears: string;
 };
 
-/** Build read-only qualification blocks for Step 2 in PhD → Diploma order. */
+/** Build read-only qualification blocks for Verify details in PhD → Diploma order. */
 export function buildConfirmationQualifications(
   selectedLevels: DegreeLevel[],
   qualifications: Partial<

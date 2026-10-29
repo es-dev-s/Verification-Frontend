@@ -10,6 +10,8 @@ import type {
   VocationalAssessmentDetail,
   VocationalUnitMatch,
 } from "@/lib/types";
+import { Gate1Box } from "./Gate1Box";
+import { QualificationEvidenceBox } from "./QualificationEvidenceBox";
 
 const CORE_BAND_LABEL: Record<CoreBand, string> = {
   no_risk: "No Risk",
@@ -113,29 +115,6 @@ function formatConfidencePct(score: number): string {
   return `${Math.round(score)}%`;
 }
 
-function recommendationSummary(c: AnzscoCandidate): string {
-  const score = resolveConfidenceScore(c);
-  if (c.vocational) {
-    const v = c.vocational;
-    const core = `core units ${v.coreMatched}/${v.coreTotal} (${CORE_BAND_LABEL[v.coreBand]})`;
-    const electives = `electives ${electiveStatusLabel(v).toLowerCase()}`;
-    return c.recommended
-      ? `Recommended ${c.title} (${c.anzscoCode}) at ${formatConfidencePct(score)} confidence — ${core}, ${electives}.`
-      : `Highest coverage is ${c.title} (${c.anzscoCode}) at ${formatConfidencePct(score)}, but it is not strong enough to recommend — ${core}.`;
-  }
-  const t1 = coverageLabel(
-    c.foundationalMatched,
-    c.foundationalExpected,
-    c.foundationalPct,
-  );
-  const t2 = coverageLabel(c.coreMatched, c.coreExpected, c.corePct);
-  const gate = c.tier3GateMet ? "capstone met" : "capstone missing";
-  if (c.recommended) {
-    return `Recommended ${c.title} (${c.anzscoCode}) at ${formatConfidencePct(score)} confidence — Tier 1 ${t1}, Tier 2 ${t2}, ${gate}.`;
-  }
-  return `Highest coverage is ${c.title} (${c.anzscoCode}) at ${formatConfidencePct(score)}, but it is not strong enough to recommend — Tier 1 ${t1}, Tier 2 ${t2}.`;
-}
-
 function determinationLabel(
   determination: AnzscoCandidate["determination"] | AssessmentResult["determination"] | undefined,
 ): string | null {
@@ -160,9 +139,21 @@ function lightNormalize(name: string): string {
     .trim();
 }
 
+function isGateBlocked(assessment: AssessmentResult | null | undefined): boolean {
+  return Boolean(assessment?.gate1 && assessment.gate1.result !== "open");
+}
+
+const TRACK_SHORT: Record<NonNullable<AnzscoCandidate["track"]>, string> = {
+  professional_engineer: "Professional Engineer track",
+  engineering_technologist: "Engineering Technologist track",
+  engineering_associate: "Engineering Associate track",
+};
+
 function candidatesFromAssessment(
   assessment: AssessmentResult,
 ): AnzscoCandidate[] {
+  // Gate 1 blocked (not eligible / manual review): nothing was scored.
+  if (isGateBlocked(assessment)) return [];
   if (assessment.candidates?.length) return assessment.candidates.slice(0, 3);
 
   // Legacy cached results without candidates[] — synthesize one card.
@@ -372,9 +363,6 @@ function SubjectVariantsModal({
             >
               {subjectName}
             </h3>
-            <p className="mt-1 text-xs text-ink-muted">
-              Naming variants accepted for this rubric subject
-            </p>
           </div>
           <button
             type="button"
@@ -652,6 +640,7 @@ export function Step3Assessment({
     setDetailSubject(null);
   }, [candidates]);
 
+  const gateBlocked = isGateBlocked(assessment);
   const selected =
     candidates.find((c) => c.anzscoCode === viewingCode) ?? candidates[0] ?? null;
 
@@ -756,11 +745,6 @@ export function Step3Assessment({
         <h1 className="text-[1.75rem] font-semibold tracking-tight text-ink">
           ANZSCO matching
         </h1>
-        <p className="mt-2 max-w-2xl text-[0.95rem] leading-relaxed text-ink-muted">
-          Transcript subjects matched against occupation rubrics. Counts and
-          percentages are raw coverage — not a risk determination. Click a
-          subject to inspect naming variants.
-        </p>
       </header>
 
       {loading ? (
@@ -795,14 +779,9 @@ export function Step3Assessment({
             className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
           >
             <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-                  Extracted subjects
-                </p>
-                <p className="mt-1 text-sm text-ink-muted">
-                  Subject names returned by the LLM from the transcript
-                </p>
-              </div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+                Extracted subjects
+              </p>
               <p className="text-xs font-medium tabular-nums text-ink-faint">
                 {(assessment.extractedSubjects ?? []).length} subjects
               </p>
@@ -833,7 +812,9 @@ export function Step3Assessment({
             )}
           </section>
 
-          {recommendedCandidate ? (
+          {assessment.gate1 ? <Gate1Box gate={assessment.gate1} /> : null}
+
+          {recommendedCandidate && !gateBlocked ? (
             <section
               aria-label="Recommended occupation"
               className="rounded-xl border border-success-line bg-success-soft px-4 py-3"
@@ -843,10 +824,14 @@ export function Step3Assessment({
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-success">
                     {recommendedCandidate.recommended
                       ? "Recommended"
-                      : "Best coverage"}
+                      : "Best coverage · not strong enough to recommend"}
                   </p>
-                  <p className="mt-1 text-sm leading-snug text-ink">
-                    {recommendationSummary(recommendedCandidate)}
+                  <p className="mt-1 text-base font-semibold leading-snug text-ink">
+                    {recommendedCandidate.title}
+                    <span className="font-mono font-medium tabular-nums text-success">
+                      {" "}
+                      · {recommendedCandidate.anzscoCode}
+                    </span>
                   </p>
                 </div>
                 <p className="shrink-0 font-mono text-sm font-semibold tabular-nums text-success">
@@ -858,7 +843,7 @@ export function Step3Assessment({
             </section>
           ) : null}
 
-          {assessment.routing?.note ? (
+          {!assessment.gate1 && assessment.routing?.note ? (
             <section
               aria-label="Qualification route"
               className="rounded-xl border border-line bg-surface/95 px-4 py-2.5"
@@ -876,14 +861,16 @@ export function Step3Assessment({
             </section>
           ) : null}
 
+          {assessment.qualificationEvidence && !gateBlocked ? (
+            <QualificationEvidenceBox evidence={assessment.qualificationEvidence} />
+          ) : null}
+
           {/* 1. Top candidates — bento comparison row */}
+          {!gateBlocked ? (
           <section aria-label="Top ANZSCO candidates">
             <div className="mb-2 flex items-center justify-between gap-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                 Top matches
-              </p>
-              <p className="text-[11px] text-ink-faint">
-                Select a card to inspect its breakdown
               </p>
             </div>
             <div
@@ -924,6 +911,9 @@ export function Step3Assessment({
                         <p className="mt-0.5 truncate text-sm font-semibold text-ink">
                           {c.title}
                         </p>
+                        {c.track ? (
+                          <p className="mt-0.5 text-[10px] text-ink-faint">{TRACK_SHORT[c.track]}</p>
+                        ) : null}
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
                         {isTopRec ? (
@@ -1004,8 +994,9 @@ export function Step3Assessment({
               })}
             </div>
           </section>
+          ) : null}
 
-          {selected ? (
+          {selected && !gateBlocked ? (
             <>
               {/* Meta strip: source + work experience + confidence */}
               <div className="grid gap-3 md:grid-cols-3">
@@ -1085,11 +1076,6 @@ export function Step3Assessment({
                       {selectedWorkAnalysis.analysis}
                     </p>
                   ) : null}
-                  <p className="mt-1.5 text-[11px] text-ink-faint">
-                    {selected.vocational
-                      ? "From confirmed work on the case — separate from unit-code coverage"
-                      : "From confirmed work on the case — separate from Tier 1 / Tier 2 coverage"}
-                  </p>
                 </section>
               </div>
 
@@ -1130,11 +1116,6 @@ export function Step3Assessment({
                     <h2 className="mt-1 text-base font-semibold text-ink">
                       {selected.anzscoCode} — {selected.title}
                     </h2>
-                    <p className="mt-1 text-[11px] text-ink-faint">
-                      {selected.vocational
-                        ? "Core units matched by training-package code"
-                        : "Click a subject to see matched and unmatched naming variants"}
-                    </p>
                   </div>
                   <button
                     type="button"
@@ -1164,9 +1145,6 @@ export function Step3Assessment({
                       <h3 className="text-sm font-semibold text-ink">
                         Matched subjects
                       </h3>
-                      <p className="mt-0.5 text-[11px] text-ink-muted">
-                        Rubric topics covered by the transcript
-                      </p>
                     </div>
 
                     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
@@ -1266,9 +1244,6 @@ export function Step3Assessment({
                       <h3 className="text-sm font-semibold text-ink">
                         Missing subjects
                       </h3>
-                      <p className="mt-0.5 text-[11px] text-ink-muted">
-                        Rubric subjects not covered — click for variants
-                      </p>
                     </div>
 
                     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
@@ -1332,9 +1307,6 @@ export function Step3Assessment({
                       <h3 className="text-sm font-semibold text-ink">
                         Unclassified subjects
                       </h3>
-                      <p className="mt-0.5 text-[11px] text-ink-muted">
-                        Informational — not counted in coverage
-                      </p>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
                       {unclassified.length ? (

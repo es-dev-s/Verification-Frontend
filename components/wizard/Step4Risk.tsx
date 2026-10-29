@@ -10,6 +10,9 @@ import type {
   PrecedentCaseRow,
   PrecedentCheck,
   RiskAssessmentResult,
+  RiskComponentScore,
+  RiskLevel,
+  RiskScoringBreakdown,
   SubjectMatchRow,
 } from "@/lib/types";
 import {
@@ -21,35 +24,9 @@ import {
   normalizeAnzsco,
   precedentRiskBadge,
   riskBadge,
-  riskBandFromScore,
-  riskBandRange,
 } from "@/lib/riskDisplay";
 
 const PAGE_SIZE = 10;
-
-function ScoreTile({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: number;
-  hint?: string;
-}) {
-  return (
-    <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-        {label}
-      </p>
-      <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight text-ink">
-        {formatPct(value)}
-      </p>
-      {hint ? (
-        <p className="mt-1 text-[11px] leading-snug text-ink-faint">{hint}</p>
-      ) : null}
-    </section>
-  );
-}
 
 function StatMiniCard({
   label,
@@ -577,158 +554,181 @@ function domainCountClass(kind: DomainRow["kind"], count: number): string {
   }
 }
 
-function BandRiskReasoningCard({
-  risk,
-  basis,
-}: {
-  risk: RiskAssessmentResult;
-  basis: string;
-}) {
-  const finalBadge = riskBadge(risk.riskLevel);
-  const baseBadge = riskBadge(risk.baseRiskLevel ?? risk.riskLevel);
-  const hist = risk.historical;
+type ScoringView = { scoring: RiskScoringBreakdown; legacy: boolean };
+
+/** Default weights / bands for older saved results without a scoring breakdown. */
+const LEGACY_WEIGHTS = { fundamental: 0.3, core: 0.5, historical: 0.2 } as const;
+const LEGACY_BANDS = { noRisk: 85, low: 75, medium: 50 } as const;
+
+function scoringOf(risk: RiskAssessmentResult): ScoringView {
+  if (risk.scoring) return { scoring: risk.scoring, legacy: false };
   const vocational = risk.assessmentFlow === "vocational_units";
-  const items: Array<{ key: string; label: string; text: string }> = [
+  const components: RiskComponentScore[] = [
     {
-      key: "step3",
-      label: "Step 3 result",
-      text: `${basis} gives ${baseBadge.label.toLowerCase()}.`,
+      key: "fundamental",
+      label: vocational ? "Electives" : "Fundamental subjects",
+      pct: vocational ? null : risk.fundamentalPct,
+      weight: LEGACY_WEIGHTS.fundamental,
+      appliedWeight: vocational ? 0 : LEGACY_WEIGHTS.fundamental,
+      used: !vocational,
+    },
+    {
+      key: "core",
+      label: vocational ? "Core units" : "Core subjects",
+      pct: risk.corePct,
+      weight: LEGACY_WEIGHTS.core,
+      appliedWeight: LEGACY_WEIGHTS.core,
+      used: true,
     },
     {
       key: "historical",
       label: "Historical outcomes",
-      text: risk.historicalModifierApplied
-        ? `${formatPct(hist.positivePct)} positive across ${hist.totalCases} past cases (at least 20 cases and below 40%), so the rating moved one level worse.`
-        : hist.totalCases > 0
-          ? `${formatPct(hist.positivePct)} positive across ${hist.totalCases} past case${hist.totalCases === 1 ? "" : "s"} — context only; it moves the rating only with at least 20 cases and below 40% positive.`
-          : "No comparable historical cases — context only.",
-    },
-    {
-      key: "coverage",
-      label: "Subject coverage",
-      text: vocational
-        ? `Core units at ${formatPct(risk.corePct)} (shown for reference; the core-unit band above decides).`
-        : `Fundamentals at ${formatPct(risk.fundamentalPct)} and core at ${formatPct(risk.corePct)} (shown for reference; the Step 3 bands above decide).`,
+      pct: risk.historical.totalCases > 0 ? risk.historicalPct : null,
+      weight: LEGACY_WEIGHTS.historical,
+      appliedWeight: LEGACY_WEIGHTS.historical,
+      used: risk.historical.totalCases > 0,
     },
   ];
-  if (risk.workExperienceBoost) {
-    items.push({
-      key: "work",
-      label: "Work experience",
-      text: "Related work experience noted — context only; it does not change the rating.",
-    });
-  }
-  const otherNotes = (risk.riskNotes ?? []).filter(
-    (n) => !/^Historical outcomes|^Moved one level worse|^Related work experience/.test(n),
-  );
+  return {
+    legacy: true,
+    scoring: {
+      configVersion: "legacy",
+      components,
+      overallPct: risk.overallPct,
+      riskLevel: risk.riskLevel,
+      bands: { ...LEGACY_BANDS },
+      historicalMinCases: 0,
+      renormalised: false,
+      notes: [],
+    },
+  };
+}
 
+function weightText(w: number): string {
+  return `${Math.round(w * 1000) / 10}%`;
+}
+
+function ComponentTile({
+  component: c,
+  risk,
+  legacy,
+}: {
+  component: RiskComponentScore;
+  risk: RiskAssessmentResult;
+  legacy: boolean;
+}) {
+  const hist = risk.historical;
+  const weight =
+    !c.used
+      ? "Not used"
+      : !legacy && c.appliedWeight !== c.weight
+        ? `Weight ${weightText(c.weight)} → ${weightText(c.appliedWeight)}`
+        : `Weight ${weightText(c.weight)}`;
   return (
-    <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-            Why this rating
-          </p>
-          <p className="mt-1 text-sm leading-snug text-ink">
-            The rating follows the Step 3 result; historical outcomes can move it
-            one level worse.
-          </p>
-        </div>
+    <section
+      className={`rounded-2xl border border-line px-4 py-3.5 ${c.used ? "bg-surface/95" : "bg-surface-tint"}`}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+        {c.label}
+      </p>
+      <p
+        className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${c.used ? "text-ink" : "text-ink-faint"}`}
+      >
+        {c.pct == null ? "—" : formatPct(c.pct)}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${finalBadge.className}`}
+          className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${c.used ? "bg-brand-soft text-brand-deeper" : "bg-surface text-ink-muted ring-1 ring-line"}`}
         >
-          {finalBadge.label}
+          {weight}
         </span>
+        {c.key === "historical" && hist.totalCases > 0 ? (
+          <span className="text-[11px] tabular-nums text-ink-muted">
+            {hist.positive}/{hist.totalCases} positive
+          </span>
+        ) : null}
       </div>
-      <ul className="mt-3 space-y-2 border-t border-line pt-3">
-        {items.map((item) => (
-          <li key={item.key} className="text-sm leading-snug text-ink">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-              {item.label}
-            </span>
-            <p className="mt-0.5">{item.text}</p>
-          </li>
-        ))}
-        {otherNotes.map((note) => (
-          <li key={note} className="text-sm leading-snug text-ink">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-              Note
-            </span>
-            <p className="mt-0.5">{note}</p>
-          </li>
-        ))}
-      </ul>
+      {!c.used && c.reason ? (
+        <p className="mt-1.5 text-[11px] leading-snug text-ink-muted">{c.reason}</p>
+      ) : null}
     </section>
   );
 }
 
-/** Older saved results (before band-based risk): the weighted-alignment explanation. */
-function RiskReasoningCard({ risk }: { risk: RiskAssessmentResult }) {
-  if (risk.riskBasis) {
-    return <BandRiskReasoningCard risk={risk} basis={risk.riskBasis} />;
-  }
-  const finalBadge = riskBadge(risk.riskLevel);
-  const finalLabel = finalBadge.label.toLowerCase();
-  const academicPct =
-    Math.round(((risk.fundamentalPct * 0.3 + risk.corePct * 0.5) / 0.8) * 10) /
-    10;
-  const academicLabel = riskBadge(riskBandFromScore(academicPct)).label.toLowerCase();
-  const hist = risk.historical;
+function below(n: number): number {
+  return Math.round((n - 0.1) * 10) / 10;
+}
 
-  const items: Array<{ key: string; label: string; text: string }> = [
-    {
-      key: "academic",
-      label: "Academic alignment",
-      text: `Fundamentals at ${formatPct(risk.fundamentalPct)} and core at ${formatPct(risk.corePct)} give a weighted academic alignment of ${formatPct(academicPct)}, which on its own sits in the ${academicLabel} band.`,
-    },
-    {
-      key: "historical",
-      label: "Historical alignment",
-      text:
-        hist.totalCases > 0
-          ? `Historical outcomes were ${formatPct(hist.positivePct)} positive across ${hist.totalCases} past case${hist.totalCases === 1 ? "" : "s"}, carrying 20% weight toward the ${finalLabel} rating.`
-          : `No comparable historical cases were found, so a neutral ${formatPct(risk.historicalPct)} was applied at 20% weight toward the ${finalLabel} rating.`,
-    },
+function bandRows(bands: RiskScoringBreakdown["bands"]): Array<{ level: RiskLevel; range: string }> {
+  return [
+    { level: "no_risk", range: `≥ ${bands.noRisk}%` },
+    { level: "low", range: `${bands.low}–${below(bands.noRisk)}%` },
+    { level: "medium", range: `${bands.medium}–${below(bands.low)}%` },
+    { level: "high", range: `< ${bands.medium}%` },
   ];
-  if (risk.workExperienceBoost && risk.workExperienceDelta > 0) {
-    items.push({
-      key: "work",
-      label: "Work experience",
-      text: `Related work experience added ${risk.workExperienceDelta} pts, lifting overall alignment from ${formatPct(risk.overallPctBeforeWork)} to ${formatPct(risk.overallPct)}.`,
-    });
-  }
+}
 
+/** Formula, risk-band thresholds and notes behind the overall score. */
+function ScoreBreakdownCard({
+  scoring,
+  legacy,
+  riskLevel,
+  notes,
+}: {
+  scoring: RiskScoringBreakdown;
+  legacy: boolean;
+  riskLevel: RiskLevel;
+  notes: string[];
+}) {
+  const used = scoring.components.filter((c) => c.used && c.pct != null);
   return (
     <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-            Why this rating
-          </p>
-          <p className="mt-1 text-sm leading-snug text-ink">
-            Overall alignment of{" "}
-            <span className="font-semibold tabular-nums">
-              {formatPct(risk.overallPct)}
-            </span>{" "}
-            falls in the {finalLabel} band ({riskBandRange(risk.riskLevel)}).
-          </p>
-        </div>
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${finalBadge.className}`}
-        >
-          {finalBadge.label}
-        </span>
-      </div>
-      <ul className="mt-3 space-y-2 border-t border-line pt-3">
-        {items.map((item) => (
-          <li key={item.key} className="text-sm leading-snug text-ink">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-              {item.label}
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+        Overall score
+      </p>
+      {legacy ? (
+        <p className="mt-1.5 text-sm leading-snug text-ink">
+          Saved with the earlier rating method. Re-run risk to apply the weighted score.
+        </p>
+      ) : (
+        <p className="mt-1.5 text-sm leading-relaxed text-ink">
+          {used.map((c, i) => (
+            <span key={c.key}>
+              {i > 0 ? " + " : ""}
+              <span className="tabular-nums">
+                {weightText(c.appliedWeight)} × {formatPct(c.pct as number)}
+              </span>
+              <span className="text-ink-muted"> {c.label.toLowerCase()}</span>
             </span>
-            <p className="mt-0.5">{item.text}</p>
-          </li>
-        ))}
+          ))}
+          {" = "}
+          <span className="font-semibold tabular-nums">{formatPct(scoring.overallPct)}</span>
+        </p>
+      )}
+      <ul className="mt-3 grid gap-2 border-t border-line pt-3 sm:grid-cols-4">
+        {bandRows(scoring.bands).map((row) => {
+          const b = riskBadge(row.level);
+          const active = row.level === riskLevel;
+          return (
+            <li
+              key={row.level}
+              className={`rounded-xl px-3 py-2 ${active ? b.className : "border border-line bg-surface text-ink-muted"}`}
+            >
+              <p className="text-xs font-semibold">{b.label}</p>
+              <p className="mt-0.5 text-[11px] tabular-nums">{row.range}</p>
+            </li>
+          );
+        })}
       </ul>
+      {notes.length ? (
+        <ul className="mt-3 space-y-1 border-t border-line pt-3">
+          {notes.map((n) => (
+            <li key={n} className="text-sm leading-snug text-ink-muted">
+              {n}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   );
 }
@@ -829,11 +829,15 @@ export function Step4Risk({
   onContinue?: () => void;
 }) {
   const badge = risk ? riskBadge(risk.riskLevel) : null;
+  const scoringView = risk ? scoringOf(risk) : null;
   const precedent = risk?.precedent ?? emptyPrecedent();
   const degreeBlocks = useMemo(
     () => buildConfirmationQualifications(selectedLevels, qualifications),
     [selectedLevels, qualifications],
   );
+  // Gate 1 not eligible / manual review: no scores, so no score-based risk.
+  const gate = assessment?.gate1 ?? null;
+  const gateBlocked = Boolean(gate && gate.result !== "open");
   const riskAnzsco = risk?.anzscoCode ?? "";
   const domainSource = useMemo(
     () => resolveDomainSource(assessment, riskAnzsco),
@@ -846,21 +850,33 @@ export function Step4Risk({
         <h1 className="text-[1.75rem] font-semibold tracking-tight text-ink">
           Risk analysis
         </h1>
-        <p className="mt-2 max-w-xl text-[0.95rem] leading-relaxed text-ink-muted">
-          Risk follows the Step 3 result; historical outcomes can move it one level.
-        </p>
       </header>
 
-      {loading ? (
+      {gate && gateBlocked ? (
+        <section
+          aria-label="Gate 1 result"
+          className="mb-5 rounded-2xl border border-line bg-surface-tint p-5"
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Gate 1 · {gate.result === "not_eligible" ? "Not eligible" : "Manual review"}
+          </p>
+          <p className="mt-1.5 text-sm font-medium leading-snug text-ink">{gate.reason}</p>
+          <p className="mt-1 text-sm text-ink-muted">
+            No occupation was scored, so there is no score-based risk for this case.
+          </p>
+        </section>
+      ) : null}
+
+      {loading && !gateBlocked ? (
         <div className="rounded-2xl border border-line bg-surface/95 p-8 text-center">
           <p className="text-sm font-medium text-ink">Calculating risk…</p>
           <p className="mt-2 text-xs text-ink-muted">
-            Reading the Step 3 result and historical cases.
+            Scoring subject coverage and historical cases.
           </p>
         </div>
       ) : null}
 
-      {error && !loading ? (
+      {error && !loading && !gateBlocked ? (
         <div className="mb-5 rounded-2xl border border-line bg-surface-tint p-5">
           <p className="text-sm font-medium text-ink">{error}</p>
           <button
@@ -873,7 +889,7 @@ export function Step4Risk({
         </div>
       ) : null}
 
-      {risk && !loading ? (
+      {risk && scoringView && !loading && !gateBlocked ? (
         <div className="space-y-4">
           <section className="rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -897,109 +913,35 @@ export function Step4Risk({
               ) : null}
             </div>
 
-            {risk.riskBasis ? (
-              <div className="mt-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-                  Based on
-                </p>
-                <p className="mt-1 text-base font-semibold tracking-tight text-ink">
-                  {risk.riskBasis}
-                </p>
-                {risk.historicalModifierApplied ? (
-                  <p className="mt-1 text-sm text-ink-muted">
-                    Moved one level worse by historical outcomes.
-                  </p>
-                ) : null}
-                <p className="mt-1 text-sm text-ink-faint">
-                  {risk.workExperienceBoost
-                    ? "Related work experience noted (context only)"
-                    : "No related work experience noted"}
-                </p>
-              </div>
-            ) : (
             <div className="mt-5 flex flex-wrap items-end gap-x-6 gap-y-2">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-                  Overall alignment
+                  Overall alignment score
                 </p>
                 <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight text-ink">
                   {formatPct(risk.overallPct)}
                 </p>
               </div>
-              {risk.workExperienceBoost ? (
-                <p className="pb-1 text-sm text-ink-muted">
-                  Includes work experience{" "}
-                  <span className="font-medium text-ink">
-                    +{risk.workExperienceDelta} pts
-                  </span>
-                  {risk.overallPctBeforeWork !== risk.overallPct ? (
-                    <span className="text-ink-faint">
-                      {" "}
-                      (from {formatPct(risk.overallPctBeforeWork)})
-                    </span>
-                  ) : null}
-                </p>
-              ) : (
-                <p className="pb-1 text-sm text-ink-faint">
-                  No related work experience boost
-                </p>
-              )}
             </div>
-            )}
           </section>
 
-          {risk.riskBasis ? (
-            <div
-              className={`grid gap-3 ${risk.assessmentFlow === "vocational_units" ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}
-            >
-              {risk.assessmentFlow === "vocational_units" ? null : (
-                <ScoreTile
-                  label="Fundamentals"
-                  value={risk.fundamentalPct}
-                  hint="For reference"
-                />
-              )}
-              <ScoreTile
-                label={risk.assessmentFlow === "vocational_units" ? "Core units" : "Core"}
-                value={risk.corePct}
-                hint="For reference"
-              />
-              <ScoreTile
-                label="Historical"
-                value={risk.historicalPct}
-                hint={
-                  risk.historical.totalCases > 0
-                    ? `${risk.historical.positive}/${risk.historical.totalCases} positive · ${risk.historicalModifierApplied ? "moved rating one level" : "context only"}`
-                    : "No cases · context only"
-                }
-              />
-            </div>
-          ) : (
           <div className="grid gap-3 sm:grid-cols-3">
-            <ScoreTile
-              label="Fundamentals"
-              value={risk.fundamentalPct}
-              hint="30% weight"
-            />
-            <ScoreTile label="Core" value={risk.corePct} hint="50% weight" />
-            <ScoreTile
-              label="Historical"
-              value={risk.historicalPct}
-              hint={
-                risk.historical.totalCases > 0
-                  ? `${risk.historical.positive}/${risk.historical.totalCases} positive · 20% weight`
-                  : "No cases · neutral 50% · 20% weight"
-              }
-            />
+            {scoringView.scoring.components.map((c) => (
+              <ComponentTile key={c.key} component={c} risk={risk} legacy={scoringView.legacy} />
+            ))}
           </div>
-          )}
 
           <PrecedentCheckCard
             precedent={precedent}
             qualifications={degreeBlocks}
           />
 
-          <RiskReasoningCard risk={risk} />
+          <ScoreBreakdownCard
+            scoring={scoringView.scoring}
+            legacy={scoringView.legacy}
+            riskLevel={risk.riskLevel}
+            notes={risk.riskNotes ?? []}
+          />
 
           <DomainCountCard source={domainSource} />
 
@@ -1107,7 +1049,7 @@ export function Step4Risk({
           Back
         </button>
         <div className="flex items-center gap-3">
-          {risk && !loading ? (
+          {risk && !loading && !gateBlocked ? (
             <button
               type="button"
               onClick={onRetry}
@@ -1119,7 +1061,7 @@ export function Step4Risk({
           {onContinue ? (
             <button
               type="button"
-              disabled={!risk || loading || competenceBusy}
+              disabled={!risk || loading || competenceBusy || gateBlocked}
               onClick={onContinue}
               className="rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-white shadow-[0_6px_16px_rgba(146,86,169,0.25)] hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
             >

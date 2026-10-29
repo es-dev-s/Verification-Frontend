@@ -255,6 +255,37 @@ export async function runAssessment(
   });
 }
 
+/** Transcript data summary (no LLM call). Subjects are not included. */
+export async function getTranscriptData(
+  caseId: string,
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/transcript-data`);
+}
+
+/** Read subjects from the transcripts (reuses saved subjects unless force). */
+export async function extractTranscriptData(
+  caseId: string,
+  opts?: { force?: boolean },
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/transcript-data`, {
+    method: "POST",
+    body: JSON.stringify({ force: opts?.force ?? false }),
+  });
+}
+
+/** Save assessor values for one level; null clears a value. */
+export async function saveTranscriptOverrides(
+  caseId: string,
+  body: { degreeLevel: import("./types").DegreeLevel } & Partial<
+    import("./types").TranscriptOverrides
+  >,
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/transcript-data/overrides`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function getAssessment(
   caseId: string,
 ): Promise<import("./types").AssessmentResult> {

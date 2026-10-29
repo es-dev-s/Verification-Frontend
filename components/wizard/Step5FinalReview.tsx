@@ -122,7 +122,7 @@ function buildOverallReview(
         : `${name} is rated ${riskBadge(risk.riskLevel).label.toLowerCase()} with ${formatPct(risk.overallPct)} overall alignment (${riskBandRange(risk.riskLevel)} band).`,
     );
   } else if (occupation) {
-    lines.push(`${name} has no risk result yet — run Step 4 to complete the review.`);
+    lines.push(`${name} has no risk result yet — run Step 5 to complete the review.`);
   }
 
   if (summary) {
@@ -297,7 +297,7 @@ export function Step5FinalReview({
                 Nominated occupation
               </p>
               <p className="mt-2 text-sm text-ink-muted">
-                No occupation selected yet — confirm one in Step 3.
+                No occupation selected yet — confirm one in Step 4.
               </p>
             </div>
           )}
@@ -307,7 +307,7 @@ export function Step5FinalReview({
         <section className={CARD}>
           <SectionHeader
             title="Qualifications"
-            hint="Education details confirmed in Steps 1–2"
+            hint="Education details confirmed in Steps 1–3"
           />
           {degreeBlocks.length ? (
             <div className="space-y-3">
@@ -385,7 +385,7 @@ export function Step5FinalReview({
         <section className={CARD}>
           <SectionHeader
             title="Assessment summary"
-            hint="ANZSCO subject matching from Step 3 for the nominated occupation"
+            hint="ANZSCO subject matching from Step 4 for the nominated occupation"
           />
           {summary ? (
             <>
@@ -450,7 +450,7 @@ export function Step5FinalReview({
             <EmptyNote
               text={
                 assessment
-                  ? "No Step 3 figures were found for this occupation."
+                  ? "No Step 4 figures were found for this occupation."
                   : "Assessment has not been run yet."
               }
             />
@@ -461,7 +461,7 @@ export function Step5FinalReview({
         <section className={CARD}>
           <SectionHeader
             title="Risk assessment"
-            hint="Risk level from Step 4"
+            hint="Risk level from Step 5"
           />
           {risk ? (
             <>
@@ -649,7 +649,7 @@ export function Step5FinalReview({
               ) : null}
             </>
           ) : (
-            <EmptyNote text="Risk assessment has not been run yet — go back to Step 4." />
+            <EmptyNote text="Risk assessment has not been run yet — go back to Step 5." />
           )}
         </section>
 
@@ -671,8 +671,8 @@ export function Step5FinalReview({
                   </p>
                   <p className="text-xs text-ink-muted">
                     {risk.competenceSource === "manual"
-                      ? "Manually set by you in Step 4"
-                      : "AI suggestion — change it in Step 4 if needed"}
+                      ? "Manually set by you in Step 5"
+                      : "AI suggestion — change it in Step 5 if needed"}
                   </p>
                 </div>
               </div>
@@ -704,7 +704,7 @@ export function Step5FinalReview({
               ))}
             </ul>
           ) : (
-            <EmptyNote text="Complete Steps 3 and 4 to generate the overall review." />
+            <EmptyNote text="Complete Steps 4 and 5 to generate the overall review." />
           )}
         </section>
       </div>

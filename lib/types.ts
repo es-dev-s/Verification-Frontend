@@ -230,7 +230,83 @@ export type WorkExperienceCandidateAnalysis = {
   confidenceScoreAfter: number;
 };
 
-/** Step 1 routing: which occupation family the qualification was scored as. */
+/** Gate 1 (qualification eligibility, checked before any scoring). */
+export type Gate1Result = "open" | "manual_review" | "not_eligible";
+
+/** Occupation tracks (categories in src/lib/anzsco_skill_levels.json). */
+export type Gate1TrackId = "professional_engineer" | "engineering_technologist" | "engineering_associate";
+
+export type Gate1Track = {
+  track: Gate1TrackId;
+  label: string;
+  open: boolean;
+  /** 1 = assess first; null when closed. */
+  priority: number | null;
+  /** Plain reason (why open / why closed). */
+  reason: string;
+  /** ANZSCO codes in this track. */
+  anzscoCodes: string[];
+  /** Occupations in this track that cannot be scored automatically (assess manually). */
+  notes: string[];
+};
+
+/** Award level read from the DB level, the title and any training-package code. */
+export type Gate1AwardLevel =
+  | "certificate"
+  | "diploma"
+  | "advanced_diploma"
+  | "associate_degree"
+  | "bachelor"
+  | "honours"
+  | "graduate_diploma"
+  | "master"
+  | "doctorate"
+  | "unknown";
+
+export type Gate1Qualification = {
+  title: string | null;
+  level: SubjectQualification | "unknown";
+  award: Gate1AwardLevel;
+  aqfLevel: number | null;
+  engineering: "yes" | "no" | "unclear";
+  engineeringReason: string;
+  /** Qualification.durationYears as entered (null when not stated). */
+  statedYears: number | null;
+  /** Counted from printed years / semesters (null when not reliably countable). */
+  countedYears: number | null;
+  /** Duration Gate 1 used (counted, else stated). */
+  durationYears: number | null;
+  durationSource: "counted" | "stated" | "none";
+  /** How the count was made (or why it could not be). */
+  durationMethod: string;
+  /** Unusual-case flags (combined degree, part-time, credit transfer …). */
+  flags: string[];
+  /** True for the qualification that decided the gate. */
+  used: boolean;
+  /** Short outcome for this qualification. */
+  outcome: string;
+};
+
+export type Gate1Decision = {
+  result: Gate1Result;
+  /** Spec rule that matched (1 not eligible, 2 manual review, 3 PE + Technologist, 4 Technologist, 5 Associate). */
+  rule: 1 | 2 | 3 | 4 | 5;
+  ruleLabel: string;
+  /** Plain reason shown to the assessor. */
+  reason: string;
+  /** Title (or level) of the qualification that decided the gate; null when none. */
+  qualificationUsed: string | null;
+  tracks: Gate1Track[];
+  qualifications: Gate1Qualification[];
+  /** True when the duration used was the stated one (transcript had no years / semesters). */
+  durationFallback: boolean;
+  fallbackNote: string | null;
+  /** Engineering decision for the qualification that decided the gate (null when none). */
+  engineering: EngineeringDecision | null;
+  notes: string[];
+};
+
+/** Legacy Step 1 routing (results saved before Gate 1). */
 export type RoutingInfo = {
   routes: Array<"professional" | "draftsperson_academic" | "vocational" | "unknown">;
   label: string;
@@ -279,6 +355,44 @@ export type VocationalAssessmentDetail = {
   flags: string[];
 };
 
+export type DurationEvidence = {
+  level: SubjectQualification;
+  title: string | null;
+  statedYears: number | null;
+  countedYears: number | null;
+  minimumYears: number | null;
+  creditTotal: number | null;
+  method: string;
+  unit: "semester" | "trimester" | "quarter" | "year" | "calendar" | null;
+  confidence: "high" | "medium" | "low";
+  status: "ok" | "below_minimum" | "mismatch" | "not_counted";
+  capped: boolean;
+  note: string;
+};
+
+export type EngineeringDecision = {
+  decision: "yes" | "no" | "unclear";
+  reason: string;
+  titleSignal: "engineering" | "related" | "other" | "none";
+  subjectShare: number | null;
+  subjectsConsidered: number;
+  capped: boolean;
+  note: string | null;
+};
+
+export type FinalProjectEvidence = {
+  title: string | null;
+  term: string | null;
+  inFinalYear: boolean | null;
+  note: string | null;
+};
+
+export type QualificationEvidence = {
+  duration: DurationEvidence[];
+  engineering: EngineeringDecision;
+  finalProject: FinalProjectEvidence | null;
+};
+
 export type AnzscoCandidate = {
   anzscoCode: string;
   title: string;
@@ -317,9 +431,39 @@ export type AnzscoCandidate = {
   gateDowngraded?: boolean;
   routeCapped?: boolean;
   vocational?: VocationalAssessmentDetail | null;
+  /** Gate 1 track this occupation was scored under. */
+  track?: Gate1TrackId;
 };
 
 export type RiskLevel = "no_risk" | "low" | "medium" | "high";
+
+export type RiskComponentKey = "fundamental" | "core" | "historical";
+
+/** One component of the overall academic alignment score (mirrors api risk/schemas.ts). */
+export type RiskComponentScore = {
+  key: RiskComponentKey;
+  label: string;
+  /** 0–100; null when there is no data. */
+  pct: number | null;
+  /** Configured weight (0–1). */
+  weight: number;
+  /** Weight applied after re-normalisation (0 when not used). */
+  appliedWeight: number;
+  used: boolean;
+  reason?: string;
+};
+
+/** Weighted overall score and the governance settings used for it. */
+export type RiskScoringBreakdown = {
+  configVersion: string;
+  components: RiskComponentScore[];
+  overallPct: number;
+  riskLevel: RiskLevel;
+  bands: { noRisk: number; low: number; medium: number };
+  historicalMinCases: number;
+  renormalised: boolean;
+  notes: string[];
+};
 export type Competence = "competent" | "not_competent";
 
 export type PrecedentRiskLevel = "no_risk" | "slight_risk" | "high_risk";
@@ -366,9 +510,11 @@ export type RiskAssessmentResult = {
   workExperienceDelta: number;
   overallPct: number;
   riskLevel: RiskLevel;
-  /** Level from the Step 3 determination + bands, before the historical modifier. */
+  /** Components, weights and thresholds behind the overall score (absent on older saved results). */
+  scoring?: RiskScoringBreakdown;
+  /** Older saved results only (band-based rating, no longer produced). */
   baseRiskLevel?: RiskLevel;
-  /** Plain-language basis, e.g. "Step 3: Verified – Low Risk (No Risk, Low Risk)". */
+  /** Older saved results only (band-based rating, no longer produced). */
   riskBasis?: string;
   stepThreeDetermination?: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
   historicalModifierApplied?: boolean;
@@ -415,8 +561,14 @@ export type AssessmentResult = {
   candidates?: AnzscoCandidate[];
   extractedSubjects?: ExtractedSubjectRow[];
   qualificationNotes?: string[];
-  /** Step 1 routing (which occupations were ranked). */
+  /** Legacy Step 1 routing (results saved before Gate 1; no longer written). */
   routing?: RoutingInfo;
+  /** Gate 1 qualification eligibility (decided before any scoring). */
+  gate1?: Gate1Decision;
+  /** Engineering decision and final-year project (duration is shown by Gate 1). */
+  qualificationEvidence?: QualificationEvidence;
+  /** Gate project / thesis title of the top occupation. */
+  finalProjectTitle?: string | null;
   assessmentFlow?: "academic" | "vocational_units";
   bandDetermination?: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
   explanation: string;
@@ -508,7 +660,7 @@ export type ClientFilter = "all" | ClientVerification;
 export type ClientSummary = {
   caseId: string;
   name: string;
-  nameSource: "cv_file" | "document_file" | "case_id";
+  nameSource: "cv_text" | "cv_file" | "document_file" | "case_id";
   anzscoCode: string | null;
   occupation: string | null;
   degreeLevel: string | null;
@@ -532,3 +684,108 @@ export type ClientsResponse = {
   reviewsAvailable: boolean;
   clients: ClientSummary[];
 };
+
+/** Gate 1 award level (Upload & details "Award level"). */
+export type AwardLevel =
+  | "certificate"
+  | "diploma"
+  | "advanced_diploma"
+  | "associate_degree"
+  | "bachelor"
+  | "honours"
+  | "graduate_diploma"
+  | "master"
+  | "doctorate"
+  | "unknown";
+
+export const AWARD_LEVEL_OPTIONS: Array<{ value: Exclude<AwardLevel, "unknown">; label: string }> = [
+  { value: "certificate", label: "Certificate I–IV (AQF 1–4)" },
+  { value: "diploma", label: "Diploma (AQF 5)" },
+  { value: "advanced_diploma", label: "Advanced Diploma (AQF 6)" },
+  { value: "associate_degree", label: "Associate Degree (AQF 6)" },
+  { value: "bachelor", label: "Bachelor (AQF 7)" },
+  { value: "honours", label: "Bachelor Honours (AQF 8)" },
+  { value: "graduate_diploma", label: "Graduate Diploma / Certificate (AQF 8)" },
+  { value: "master", label: "Master (AQF 9)" },
+  { value: "doctorate", label: "Doctorate (AQF 10)" },
+];
+
+export type DurationCheckStatus = "match" | "mismatch" | "fallback" | "no_stated" | "missing";
+
+export type TranscriptFinalProject = {
+  title: string;
+  term: string | null;
+  inFinalYear: boolean | null;
+};
+
+export type TranscriptOverrides = {
+  countedYears: number | null;
+  creditTotal: number | null;
+  finalProject: string | null;
+  /** 0–1. */
+  engineeringShare: number | null;
+};
+
+/** Transcript data for one qualification (Transcript data / Verify details). */
+export type QualificationTranscriptSummary = {
+  degreeLevel: DegreeLevel;
+  title: string | null;
+  fieldOfStudy: string | null;
+  award: AwardLevel;
+  awardLabel: string;
+  aqfLevel: number | null;
+  awardManual: boolean;
+  detectedAward: AwardLevel;
+  subjectCount: number;
+  statedYears: number | null;
+  transcript: {
+    countedYears: number | null;
+    terms: number | null;
+    unit: "semester" | "trimester" | "quarter" | "year" | "calendar" | null;
+    confidence: "high" | "medium" | "low";
+    reliable: boolean;
+    method: string;
+    rowsWithTerm: number;
+    creditTotal: number | null;
+    finalProject: TranscriptFinalProject | null;
+    engineeringShare: number | null;
+  };
+  overrides: TranscriptOverrides;
+  effective: {
+    countedYears: number | null;
+    creditTotal: number | null;
+    finalProject: TranscriptFinalProject | null;
+    engineeringShare: number | null;
+  };
+  basis: "counted" | "manual" | "stated" | "none";
+  basisLabel: string;
+  fallback: boolean;
+  showEngineeringShare: boolean;
+  durationCheck: {
+    status: DurationCheckStatus;
+    toleranceYears: number;
+    differenceYears: number | null;
+    ok: boolean;
+    message: string;
+  };
+};
+
+export type TranscriptDataSummary = {
+  transcriptCount: number;
+  subjectCount: number;
+  subjectsCurrent: boolean;
+  source: string | null;
+  toleranceYears: number;
+  durationOk: boolean;
+  message: string | null;
+  qualifications: QualificationTranscriptSummary[];
+};
+
+/** Field names on FieldSource for the award details (Upload & details). */
+export const AWARD_LEVEL_FIELD = "awardLevel";
+export const FIELD_OF_STUDY_FIELD = "fieldOfStudy";
+
+export function awardOptionLabel(level: AwardLevel | null | undefined): string {
+  if (!level || level === "unknown") return "Not identified";
+  return AWARD_LEVEL_OPTIONS.find((o) => o.value === level)?.label ?? level;
+}

@@ -244,7 +244,7 @@ export function Step6Approval({
         >
           Back
         </button>
-        {saved?.status === "APPROVED" ? (
+        {caseId ? (
           <button
             type="button"
             onClick={() => {
