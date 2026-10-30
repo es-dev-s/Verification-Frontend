@@ -789,7 +789,15 @@ export default function Home() {
     setTranscriptData(await getTranscriptData(caseId));
   }
 
-  async function goToAssessmentStep(force = false) {
+  /**
+   * Assessment step. Scores the saved subjects only (no transcript re-read:
+   * that is Step 2's "Re-read transcripts"). `rescore` skips the cached
+   * result; `manualOccupation` saves the assessor-selected occupation for a
+   * manual-review case (null clears it) and scores it.
+   */
+  async function goToAssessmentStep(
+    opts: { rescore?: boolean; manualOccupation?: string | null } = {},
+  ) {
     if (!caseId) {
       setSaveMsg("Case not ready");
       return;
@@ -801,7 +809,7 @@ export default function Home() {
     try {
       await saveDraft(caseId, draftBody);
       setDirty(false);
-      const result = await runAssessment(caseId, { force });
+      const result = await runAssessment(caseId, opts);
       setAssessment(result);
     } catch (err) {
       setAssessError(err instanceof Error ? err.message : String(err));
@@ -990,7 +998,10 @@ export default function Home() {
             setWizardStep(3);
             setSaveMsg(null);
           }}
-          onRetry={() => void goToAssessmentStep(true)}
+          onRetry={() => void goToAssessmentStep({ rescore: true })}
+          onRunManualOccupation={(occupationId) =>
+            void goToAssessmentStep({ manualOccupation: occupationId })
+          }
           onConfirmOccupation={(candidate: AnzscoCandidate) => {
             void goToRiskStep(candidate);
           }}
@@ -1012,7 +1023,7 @@ export default function Home() {
             setWizardStep(2);
             setSaveMsg(null);
           }}
-          onNext={() => void goToAssessmentStep(false)}
+          onNext={() => void goToAssessmentStep()}
           nextBusy={assessLoading}
         />
       ) : wizardStep === 2 ? (

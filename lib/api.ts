@@ -245,14 +245,30 @@ export async function confirmCase(
   });
 }
 
+/**
+ * Score the saved subjects (never re-extracts transcripts). `rescore` skips
+ * the cached result; `manualOccupation` (manual-review cases) saves the
+ * assessor-selected occupation id / ANZSCO and scores only it (null clears).
+ */
 export async function runAssessment(
   caseId: string,
-  opts?: { force?: boolean },
+  opts?: { rescore?: boolean; manualOccupation?: string | null },
 ): Promise<import("./types").AssessmentResult> {
+  const body: { rescore: boolean; manualOccupation?: string | null } = {
+    rescore: opts?.rescore ?? false,
+  };
+  if (opts?.manualOccupation !== undefined) body.manualOccupation = opts.manualOccupation;
   return api(`/cases/${caseId}/assess`, {
     method: "POST",
-    body: JSON.stringify({ force: opts?.force ?? false }),
+    body: JSON.stringify(body),
   });
+}
+
+/** Occupations an assessor can pick for a manual-review case. */
+export async function getAssessOccupations(): Promise<
+  import("./types").ManualOccupationOption[]
+> {
+  return api("/assess/occupations");
 }
 
 /** Transcript data summary (no LLM call). Subjects are not included. */

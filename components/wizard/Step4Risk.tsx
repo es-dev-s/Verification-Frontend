@@ -15,6 +15,7 @@ import type {
   RiskScoringBreakdown,
   SubjectMatchRow,
 } from "@/lib/types";
+import { gateBlocksScoring } from "@/lib/types";
 import {
   buildConfirmationQualifications,
   type ConfirmationQualification,
@@ -835,9 +836,10 @@ export function Step4Risk({
     () => buildConfirmationQualifications(selectedLevels, qualifications),
     [selectedLevels, qualifications],
   );
-  // Gate 1 not eligible / manual review: no scores, so no score-based risk.
+  // Gate 1 not eligible / manual review: no scores, so no score-based risk
+  // (unless the assessor selected the occupation for a manual-review case).
   const gate = assessment?.gate1 ?? null;
-  const gateBlocked = Boolean(gate && gate.result !== "open");
+  const gateBlocked = gateBlocksScoring(assessment);
   const riskAnzsco = risk?.anzscoCode ?? "";
   const domainSource = useMemo(
     () => resolveDomainSource(assessment, riskAnzsco),

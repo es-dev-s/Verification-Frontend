@@ -10,7 +10,9 @@ import type {
   VocationalAssessmentDetail,
   VocationalUnitMatch,
 } from "@/lib/types";
+import { gateBlocksScoring } from "@/lib/types";
 import { Gate1Box } from "./Gate1Box";
+import { ManualOccupationPicker } from "./ManualOccupationPicker";
 import { QualificationEvidenceBox } from "./QualificationEvidenceBox";
 
 const CORE_BAND_LABEL: Record<CoreBand, string> = {
@@ -115,6 +117,49 @@ function formatConfidencePct(score: number): string {
   return `${Math.round(score)}%`;
 }
 
+/** Family-adjusted % (one decimal when needed, e.g. 67.5%). */
+function formatAdjustedPct(score: number): string {
+  const r = Math.round(score * 10) / 10;
+  return `${Number.isInteger(r) ? r : r.toFixed(1)}%`;
+}
+
+/** Tier / unit coverage lines for a candidate card. */
+function CandidateMetrics({
+  c,
+  compact = false,
+  className,
+}: {
+  c: AnzscoCandidate;
+  compact?: boolean;
+  className: string;
+}) {
+  const rows: Array<[string, string]> = c.vocational
+    ? [
+        [
+          "Core units",
+          `${c.vocational.coreMatched}/${c.vocational.coreTotal} · ${CORE_BAND_LABEL[c.vocational.coreBand]}`,
+        ],
+        ["Electives", electiveStatusLabel(c.vocational)],
+        ["Qualification", c.vocational.qualificationMet ? "Accepted" : "To confirm"],
+      ]
+    : [
+        ["Tier 1", coverageLabel(c.foundationalMatched, c.foundationalExpected, c.foundationalPct)],
+        ["Tier 2", coverageLabel(c.coreMatched, c.coreExpected, c.corePct)],
+        ["Capstone", c.tier3GateMet ? "Capstone found" : "Capstone not found"],
+      ];
+  const shown = compact ? rows.slice(0, 2) : rows;
+  return (
+    <dl className={className}>
+      {shown.map(([label, value]) => (
+        <div key={label} className="flex min-w-0 justify-between gap-2">
+          <dt className="shrink-0 text-ink-muted">{label}</dt>
+          <dd className={`min-w-0 break-words text-right ${/\d/.test(value) ? "font-mono tabular-nums" : ""}`}>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function determinationLabel(
   determination: AnzscoCandidate["determination"] | AssessmentResult["determination"] | undefined,
 ): string | null {
@@ -139,8 +184,9 @@ function lightNormalize(name: string): string {
     .trim();
 }
 
+/** Gate 1 stops scoring (an assessor-selected occupation re-opens it). */
 function isGateBlocked(assessment: AssessmentResult | null | undefined): boolean {
-  return Boolean(assessment?.gate1 && assessment.gate1.result !== "open");
+  return gateBlocksScoring(assessment);
 }
 
 const TRACK_SHORT: Record<NonNullable<AnzscoCandidate["track"]>, string> = {
@@ -154,7 +200,8 @@ function candidatesFromAssessment(
 ): AnzscoCandidate[] {
   // Gate 1 blocked (not eligible / manual review): nothing was scored.
   if (isGateBlocked(assessment)) return [];
-  if (assessment.candidates?.length) return assessment.candidates.slice(0, 3);
+  // Up to 3 matched + ET (Maybe Suitable) when ET took a top-3 slot.
+  if (assessment.candidates?.length) return assessment.candidates.slice(0, 4);
 
   // Legacy cached results without candidates[] — synthesize one card.
   if (!assessment.anzscoCode && !assessment.title) {
@@ -604,18 +651,58 @@ export function Step3Assessment({
   onBack,
   onRetry,
   onConfirmOccupation,
+  onRunManualOccupation,
 }: {
   assessment: AssessmentResult | null;
   loading: boolean;
   error: string | null;
   onBack: () => void;
+  /** Re-score the saved subjects (no transcript re-read). */
   onRetry: () => void;
   onConfirmOccupation?: (candidate: AnzscoCandidate) => void;
+  /** Gate 1 manual review: score the assessor-selected occupation. */
+  onRunManualOccupation?: (occupationId: string) => void;
 }) {
   const candidates = useMemo(
     () => (assessment ? candidatesFromAssessment(assessment) : []),
     [assessment],
   );
+
+  // Family rules (API): primary first, alternatives by adjusted confidence.
+  const family = assessment?.familyAdjustment ?? null;
+  const adjByCode = useMemo(
+    () => new Map((family?.occupations ?? []).map((o) => [o.anzscoCode, o])),
+    [family],
+  );
+  const recommendedCandidate = useMemo(() => {
+    if (!candidates.length) return null;
+    const recommended = candidates.filter((c) => c.recommended);
+    const pool = recommended.length ? recommended : candidates;
+    return [...pool].sort(
+      (a, b) => resolveConfidenceScore(b) - resolveConfidenceScore(a),
+    )[0] ?? null;
+  }, [candidates]);
+  const primaryCandidate = useMemo(
+    () =>
+      (family ? candidates.find((c) => c.anzscoCode === family.primaryCode) : null) ??
+      recommendedCandidate,
+    [family, candidates, recommendedCandidate],
+  );
+  const alternativeCandidates = useMemo(() => {
+    if (!primaryCandidate) return [];
+    // ET shown once, as the Maybe Suitable card.
+    const etCode = family?.maybeSuitable?.inCandidates
+      ? family.maybeSuitable.anzscoCode
+      : null;
+    const order = new Map((family?.occupations ?? []).map((o, i) => [o.anzscoCode, i]));
+    return candidates
+      .filter((c) => c.anzscoCode !== primaryCandidate.anzscoCode && c.anzscoCode !== etCode)
+      .sort((a, b) => (order.get(a.anzscoCode) ?? 99) - (order.get(b.anzscoCode) ?? 99));
+  }, [family, candidates, primaryCandidate]);
+
+  // Top matches row layout (UI only): primary + alternatives + ET in one row.
+  const hasMaybeSuitable = Boolean(family?.maybeSuitable);
+  const rowCardCount = 1 + alternativeCandidates.length + (hasMaybeSuitable ? 1 : 0);
 
   const [viewingCode, setViewingCode] = useState<string | null>(null);
   const [confirmedCode, setConfirmedCode] = useState<string | null>(null);
@@ -634,15 +721,18 @@ export function Step3Assessment({
     setViewingCode((prev) =>
       prev && candidates.some((c) => c.anzscoCode === prev)
         ? prev
-        : candidates[0]!.anzscoCode,
+        : (primaryCandidate ?? candidates[0]!).anzscoCode,
     );
     setConfirmedCode(null);
     setDetailSubject(null);
-  }, [candidates]);
+  }, [candidates, primaryCandidate]);
 
   const gateBlocked = isGateBlocked(assessment);
   const selected =
-    candidates.find((c) => c.anzscoCode === viewingCode) ?? candidates[0] ?? null;
+    candidates.find((c) => c.anzscoCode === viewingCode) ??
+    primaryCandidate ??
+    candidates[0] ??
+    null;
 
   const matchedTier1 = useMemo(
     () => groupMatchedByRubric(selected?.matches ?? [], "tier1"),
@@ -718,15 +808,6 @@ export function Step3Assessment({
   const matchedWorkJobs =
     selectedWorkAnalysis?.matchedJobs?.filter((j) => j.title) ?? [];
 
-  const recommendedCandidate = useMemo(() => {
-    if (!candidates.length) return null;
-    const recommended = candidates.filter((c) => c.recommended);
-    const pool = recommended.length ? recommended : candidates;
-    return [...pool].sort(
-      (a, b) => resolveConfidenceScore(b) - resolveConfidenceScore(a),
-    )[0] ?? null;
-  }, [candidates]);
-
   const detailCatalog = detailSubject
     ? catalogByName.get(detailSubject.name)
     : undefined;
@@ -750,11 +831,10 @@ export function Step3Assessment({
       {loading ? (
         <div className="rounded-2xl border border-line bg-surface/95 p-8 text-center">
           <p className="text-sm font-medium text-ink">
-            Running subject matching…
+            Matching subjects against ANZSCO rubrics
           </p>
           <p className="mt-2 text-xs text-ink-muted">
-            Extracting subjects and comparing against ANZSCO rubrics. This may
-            take a minute.
+            Uses the subjects saved in Transcript data. This may take a moment.
           </p>
         </div>
       ) : null}
@@ -814,34 +894,15 @@ export function Step3Assessment({
 
           {assessment.gate1 ? <Gate1Box gate={assessment.gate1} /> : null}
 
-          {recommendedCandidate && !gateBlocked ? (
-            <section
-              aria-label="Recommended occupation"
-              className="rounded-xl border border-success-line bg-success-soft px-4 py-3"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-success">
-                    {recommendedCandidate.recommended
-                      ? "Recommended"
-                      : "Best coverage · not strong enough to recommend"}
-                  </p>
-                  <p className="mt-1 text-base font-semibold leading-snug text-ink">
-                    {recommendedCandidate.title}
-                    <span className="font-mono font-medium tabular-nums text-success">
-                      {" "}
-                      · {recommendedCandidate.anzscoCode}
-                    </span>
-                  </p>
-                </div>
-                <p className="shrink-0 font-mono text-sm font-semibold tabular-nums text-success">
-                  {formatConfidencePct(
-                    resolveConfidenceScore(recommendedCandidate),
-                  )}
-                </p>
-              </div>
-            </section>
+          {assessment.gate1?.result === "manual_review" && onRunManualOccupation ? (
+            <ManualOccupationPicker
+              key={assessment.assessorSelected?.occupationId ?? "none"}
+              current={assessment.assessorSelected}
+              busy={loading}
+              onRun={onRunManualOccupation}
+            />
           ) : null}
+
 
           {!assessment.gate1 && assessment.routing?.note ? (
             <section
@@ -865,134 +926,178 @@ export function Step3Assessment({
             <QualificationEvidenceBox evidence={assessment.qualificationEvidence} />
           ) : null}
 
-          {/* 1. Top candidates — bento comparison row */}
-          {!gateBlocked ? (
-          <section aria-label="Top ANZSCO candidates">
-            <div className="mb-2 flex items-center justify-between gap-3">
+          {/* 1. Suggested ANZSCOs — primary (large) + alternatives (small) + ET Maybe Suitable */}
+          {!gateBlocked && primaryCandidate ? (
+          <section aria-label="Suggested ANZSCO occupations" className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                 Top matches
               </p>
             </div>
             <div
-              className={`grid gap-3 ${
-                candidates.length >= 3
-                  ? "md:grid-cols-3"
-                  : candidates.length === 2
-                    ? "md:grid-cols-2"
-                    : "md:grid-cols-1"
+              className={`grid items-start gap-3 ${
+                rowCardCount >= 4
+                  ? "md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]"
+                  : rowCardCount === 3
+                    ? "md:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr]"
+                    : rowCardCount === 2
+                      ? "md:grid-cols-[1.5fr_1fr]"
+                      : ""
               }`}
             >
-              {candidates.map((c, rank) => {
-                const active = selected?.anzscoCode === c.anzscoCode;
-                const conf = confidenceBadge(
-                  c.confidence ??
-                    (rank === 0 ? assessment.confidence : null),
-                );
-                const score = resolveConfidenceScore(c);
-                const isTopRec =
-                  recommendedCandidate?.anzscoCode === c.anzscoCode &&
-                  c.recommended;
-                return (
-                  <button
-                    key={c.anzscoCode}
-                    type="button"
-                    onClick={() => setViewingCode(c.anzscoCode)}
-                    className={`rounded-2xl border p-4 text-left transition ${
-                      active
-                        ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
-                        : "border-line bg-surface/95 hover:border-line-strong"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-mono text-[11px] tabular-nums text-ink-muted">
-                          #{rank + 1} · {c.anzscoCode}
-                        </p>
-                        <p className="mt-0.5 truncate text-sm font-semibold text-ink">
-                          {c.title}
-                        </p>
-                        {c.track ? (
-                          <p className="mt-0.5 text-[10px] text-ink-faint">{TRACK_SHORT[c.track]}</p>
+            {(() => {
+              const c = primaryCandidate;
+              const active = selected?.anzscoCode === c.anzscoCode;
+              const conf = confidenceBadge(c.confidence ?? assessment.confidence);
+              const primaryScore =
+                family?.primaryConfidence ?? resolveConfidenceScore(c);
+              return (
+                <button
+                  type="button"
+                  onClick={() => setViewingCode(c.anzscoCode)}
+                  className={`w-full min-w-0 rounded-2xl border p-4 text-left transition ${
+                    rowCardCount === 3 ? "md:col-span-2 lg:col-span-1" : ""
+                  } ${
+                    active
+                      ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
+                      : "border-line bg-surface/95 hover:border-line-strong"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            c.recommended
+                              ? "bg-success-soft text-success"
+                              : "bg-surface-tint text-ink-muted"
+                          }`}
+                        >
+                          {c.recommended ? "Recommended" : "Best coverage · not recommended"}
+                        </span>
+                        {assessment.assessorSelected ? (
+                          <span className="rounded-full bg-surface-tint px-2 py-0.5 text-[10px] font-medium text-ink-muted">
+                            Assessor-selected occupation
+                          </span>
                         ) : null}
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        {isTopRec ? (
-                          <span className="rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-medium text-success">
-                            Recommended
+                        {conf ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${conf.className}`}
+                          >
+                            {conf.label}
                           </span>
                         ) : null}
                       </div>
+                      <p className="mt-2 break-words text-base font-semibold leading-snug text-ink">
+                        {c.title}
+                        <span className="font-mono tabular-nums"> · {c.anzscoCode}</span>
+                      </p>
+                      {c.track ? (
+                        <p className="mt-0.5 text-[11px] text-ink-faint">{TRACK_SHORT[c.track]}</p>
+                      ) : null}
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <span className="rounded-md bg-brand-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-brand-deeper">
-                        {formatConfidencePct(score)}
-                      </span>
-                      {conf ? (
-                        <span
-                          className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${conf.className}`}
-                        >
-                          {conf.label}
-                        </span>
-                      ) : (
-                        <span className="rounded-md bg-surface-tint px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
-                          Not recommended
-                        </span>
-                      )}
+                    <p className="shrink-0 font-mono text-2xl font-semibold tabular-nums text-brand-deeper">
+                      {formatAdjustedPct(primaryScore)}
+                    </p>
+                  </div>
+                  <CandidateMetrics
+                    c={c}
+                    className={`mt-3 grid gap-x-5 gap-y-1 text-xs text-ink-muted ${
+                      rowCardCount >= 4 ? "sm:grid-cols-2 lg:grid-cols-1" : "sm:grid-cols-2"
+                    }`}
+                  />
+                </button>
+              );
+            })()}
+
+            {alternativeCandidates.map((c) => {
+                  const active = selected?.anzscoCode === c.anzscoCode;
+                  const adj = adjByCode.get(c.anzscoCode);
+                  const shown = adj?.adjustedConfidence ?? resolveConfidenceScore(c);
+                  return (
+                    <button
+                      key={c.anzscoCode}
+                      type="button"
+                      onClick={() => setViewingCode(c.anzscoCode)}
+                      className={`min-w-0 rounded-xl border px-3 py-2.5 text-left transition ${
+                        active
+                          ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
+                          : "border-line bg-surface/95 hover:border-line-strong"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-mono text-[10px] tabular-nums text-ink-muted">
+                            {c.anzscoCode}
+                          </p>
+                          <p className="mt-0.5 line-clamp-2 break-words text-[13px] font-medium leading-snug text-ink">
+                            {c.title}
+                          </p>
+                        </div>
+                        <p className="shrink-0 font-mono text-[13px] font-semibold tabular-nums text-ink">
+                          {formatAdjustedPct(shown)}
+                        </p>
+                      </div>
+                      {adj?.changed ? (
+                        <p className="mt-1 text-[10px] leading-snug text-ink-muted">
+                          <span className="font-mono tabular-nums">
+                            {formatAdjustedPct(adj.originalConfidence)} →{" "}
+                            {formatAdjustedPct(adj.adjustedConfidence)}
+                          </span>
+                          <span className="text-ink-faint"> · {adj.reason}</span>
+                        </p>
+                      ) : null}
+                      <CandidateMetrics c={c} compact className="mt-1.5 space-y-0.5 text-[10px] text-ink-muted" />
+                    </button>
+                  );
+                })}
+            {family?.maybeSuitable ? (
+              (() => {
+                const et = family.maybeSuitable;
+                const etCandidate = et.inCandidates
+                  ? candidates.find((c) => c.anzscoCode === et.anzscoCode) ?? null
+                  : null;
+                const active = etCandidate && selected?.anzscoCode === etCandidate.anzscoCode;
+                const body = (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-[10px] tabular-nums text-ink-muted">
+                          {et.anzscoCode}
+                        </p>
+                        <p className="mt-0.5 line-clamp-2 break-words text-[13px] font-medium leading-snug text-ink">
+                          {et.title}
+                        </p>
+                      </div>
+                      <p className="shrink-0 font-mono text-[13px] font-semibold tabular-nums text-ink">
+                        {formatAdjustedPct(et.adjustedConfidence)}
+                      </p>
                     </div>
-                    {c.vocational ? (
-                      <dl className="mt-3 space-y-1.5 text-xs text-ink-muted">
-                        <div className="flex justify-between gap-2">
-                          <dt className="text-ink-muted">Core units</dt>
-                          <dd className="font-mono tabular-nums">
-                            {c.vocational.coreMatched}/{c.vocational.coreTotal} ·{" "}
-                            {CORE_BAND_LABEL[c.vocational.coreBand]}
-                          </dd>
-                        </div>
-                        <div className="flex justify-between gap-2">
-                          <dt className="text-ink-muted">Electives</dt>
-                          <dd className="text-right">{electiveStatusLabel(c.vocational)}</dd>
-                        </div>
-                        <div className="flex justify-between gap-2">
-                          <dt className="text-ink-muted">Qualification</dt>
-                          <dd>{c.vocational.qualificationMet ? "Accepted" : "To confirm"}</dd>
-                        </div>
-                      </dl>
-                    ) : (
-                    <dl className="mt-3 space-y-1.5 text-xs text-ink-muted">
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-ink-muted">Tier 1</dt>
-                        <dd className="font-mono tabular-nums">
-                          {coverageLabel(
-                            c.foundationalMatched,
-                            c.foundationalExpected,
-                            c.foundationalPct,
-                          )}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-ink-muted">Tier 2</dt>
-                        <dd className="font-mono tabular-nums">
-                          {coverageLabel(
-                            c.coreMatched,
-                            c.coreExpected,
-                            c.corePct,
-                          )}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-ink-muted">Capstone</dt>
-                        <dd>
-                          {c.tier3GateMet
-                            ? "Capstone found"
-                            : "Capstone not found"}
-                        </dd>
-                      </div>
-                    </dl>
-                    )}
-                  </button>
+                    <span className="mt-1.5 inline-block rounded-full bg-[var(--warning-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--warning-ink)]">
+                      {et.label}
+                    </span>
+                  </>
                 );
-              })}
+                const cls = `min-w-0 rounded-xl border px-3 py-2.5 text-left transition ${
+                  active
+                    ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
+                    : "border-line bg-surface/95"
+                }`;
+                return etCandidate ? (
+                  <button
+                    type="button"
+                    onClick={() => setViewingCode(etCandidate.anzscoCode)}
+                    className={`${cls} ${active ? "" : "hover:border-line-strong"}`}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <div className={cls}>{body}</div>
+                );
+              })()
+            ) : null}
             </div>
+
           </section>
           ) : null}
 
