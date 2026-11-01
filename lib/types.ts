@@ -279,6 +279,8 @@ export type Gate1Qualification = {
   durationSource: "counted" | "stated" | "none";
   /** How the count was made (or why it could not be). */
   durationMethod: string;
+  /** Flag text when the counted duration was converted from credits (absent on older results). */
+  creditConversion?: string | null;
   /** Unusual-case flags (combined degree, part-time, credit transfer …). */
   flags: string[];
   /** True for the qualification that decided the gate. */
@@ -301,6 +303,8 @@ export type Gate1Decision = {
   /** True when the duration used was the stated one (transcript had no years / semesters). */
   durationFallback: boolean;
   fallbackNote: string | null;
+  /** Credit-conversion flag of the qualification that decided the gate (absent on older results). */
+  creditConversionNote?: string | null;
   /** Engineering decision for the qualification that decided the gate (null when none). */
   engineering: EngineeringDecision | null;
   notes: string[];
@@ -459,8 +463,8 @@ export type RiskScoringBreakdown = {
   components: RiskComponentScore[];
   overallPct: number;
   riskLevel: RiskLevel;
+  /** Risk-band thresholds from api/src/risk/riskBands.config.ts (the only source of the bands). */
   bands: { noRisk: number; low: number; medium: number };
-  historicalMinCases: number;
   renormalised: boolean;
   notes: string[];
 };
@@ -505,19 +509,16 @@ export type RiskAssessmentResult = {
     positivePct: number;
   };
   precedent: PrecedentCheck;
-  overallPctBeforeWork: number;
   workExperienceBoost: boolean;
-  workExperienceDelta: number;
+  /** Overall academic alignment score (0–100), current weights. */
   overallPct: number;
+  /** Category from the overall score and the configured bands. */
   riskLevel: RiskLevel;
-  /** Components, weights and thresholds behind the overall score (absent on older saved results). */
-  scoring?: RiskScoringBreakdown;
-  /** Older saved results only (band-based rating, no longer produced). */
-  baseRiskLevel?: RiskLevel;
-  /** Older saved results only (band-based rating, no longer produced). */
-  riskBasis?: string;
-  stepThreeDetermination?: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
-  historicalModifierApplied?: boolean;
+  /**
+   * Components, weights and band thresholds behind the overall score. Always
+   * sent: the API re-scores older saved results with the current settings.
+   */
+  scoring: RiskScoringBreakdown;
   riskNotes?: string[];
   assessmentFlow?: "academic" | "vocational_units";
   /** Competence check disagrees with the band (band stands; assessor to review). */
@@ -837,6 +838,8 @@ export type QualificationTranscriptSummary = {
   };
   basis: "counted" | "manual" | "stated" | "none";
   basisLabel: string;
+  /** e.g. "Converted from credits (240 credits ÷ 60 per year)" when the years came from credits. */
+  creditConversion?: string | null;
   fallback: boolean;
   showEngineeringShare: boolean;
   durationCheck: {

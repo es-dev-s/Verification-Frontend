@@ -14,6 +14,7 @@ import type {
   RiskLevel,
   RiskScoringBreakdown,
   SubjectMatchRow,
+  TranscriptDataSummary,
 } from "@/lib/types";
 import { gateBlocksScoring } from "@/lib/types";
 import {
@@ -175,6 +176,11 @@ function MatchingCasesModal({
                         </dt>
                         <dd className="font-medium text-ink">
                           {block.durationYears}
+                          {block.durationSource ? (
+                            <span className="block text-[11px] font-normal text-ink-muted">
+                              {block.durationSource}
+                            </span>
+                          ) : null}
                         </dd>
                       </div>
                     </dl>
@@ -557,52 +563,12 @@ function domainCountClass(kind: DomainRow["kind"], count: number): string {
 
 type ScoringView = { scoring: RiskScoringBreakdown; legacy: boolean };
 
-/** Default weights / bands for older saved results without a scoring breakdown. */
-const LEGACY_WEIGHTS = { fundamental: 0.3, core: 0.5, historical: 0.2 } as const;
-const LEGACY_BANDS = { noRisk: 85, low: 75, medium: 50 } as const;
-
-function scoringOf(risk: RiskAssessmentResult): ScoringView {
-  if (risk.scoring) return { scoring: risk.scoring, legacy: false };
-  const vocational = risk.assessmentFlow === "vocational_units";
-  const components: RiskComponentScore[] = [
-    {
-      key: "fundamental",
-      label: vocational ? "Electives" : "Fundamental subjects",
-      pct: vocational ? null : risk.fundamentalPct,
-      weight: LEGACY_WEIGHTS.fundamental,
-      appliedWeight: vocational ? 0 : LEGACY_WEIGHTS.fundamental,
-      used: !vocational,
-    },
-    {
-      key: "core",
-      label: vocational ? "Core units" : "Core subjects",
-      pct: risk.corePct,
-      weight: LEGACY_WEIGHTS.core,
-      appliedWeight: LEGACY_WEIGHTS.core,
-      used: true,
-    },
-    {
-      key: "historical",
-      label: "Historical outcomes",
-      pct: risk.historical.totalCases > 0 ? risk.historicalPct : null,
-      weight: LEGACY_WEIGHTS.historical,
-      appliedWeight: LEGACY_WEIGHTS.historical,
-      used: risk.historical.totalCases > 0,
-    },
-  ];
-  return {
-    legacy: true,
-    scoring: {
-      configVersion: "legacy",
-      components,
-      overallPct: risk.overallPct,
-      riskLevel: risk.riskLevel,
-      bands: { ...LEGACY_BANDS },
-      historicalMinCases: 0,
-      renormalised: false,
-      notes: [],
-    },
-  };
+/**
+ * Scoring breakdown sent by the API (older saved results are re-scored there
+ * with the current weights and bands, so it is always present).
+ */
+function scoringOf(risk: RiskAssessmentResult): ScoringView | null {
+  return risk.scoring ? { scoring: risk.scoring, legacy: false } : null;
 }
 
 function weightText(w: number): string {
@@ -804,6 +770,7 @@ export function Step4Risk({
   onRetry,
   onCompetenceChange,
   onContinue,
+  transcriptData = null,
 }: {
   risk: RiskAssessmentResult | null;
   /** Step 3 assessment — used to derive per-domain match counts for the chosen ANZSCO. */
@@ -828,13 +795,18 @@ export function Step4Risk({
   onCompetenceChange: (competence: Competence) => void;
   /** Go to Step 5 (final review). Only enabled once a risk result exists. */
   onContinue?: () => void;
+  /** Verify details summary: source of the confirmed study duration. */
+  transcriptData?: TranscriptDataSummary | null;
 }) {
   const badge = risk ? riskBadge(risk.riskLevel) : null;
   const scoringView = risk ? scoringOf(risk) : null;
   const precedent = risk?.precedent ?? emptyPrecedent();
   const degreeBlocks = useMemo(
-    () => buildConfirmationQualifications(selectedLevels, qualifications),
-    [selectedLevels, qualifications],
+    () =>
+      buildConfirmationQualifications(selectedLevels, qualifications, undefined, {
+        transcriptData,
+      }),
+    [selectedLevels, qualifications, transcriptData],
   );
   // Gate 1 not eligible / manual review: no scores, so no score-based risk
   // (unless the assessor selected the occupation for a manual-review case).

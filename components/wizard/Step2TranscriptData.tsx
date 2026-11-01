@@ -9,6 +9,7 @@ import {
 } from "@/lib/types";
 import { BTN_PRIMARY, BTN_SECONDARY, CARD, FOCUS_RING, Spinner } from "./UploadTile";
 import {
+  CreditConversionPill,
   DataTile,
   formatCountedDuration,
   formatCredits,
@@ -163,11 +164,14 @@ function QualificationCard({
             {edited ? " · includes values you edited" : ""}
           </p>
         </div>
-        {!editing ? (
-          <button type="button" className={BTN_SECONDARY} onClick={() => setEditing(true)}>
-            Edit values
-          </button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <CreditConversionPill label={q.creditConversion} />
+          {!editing ? (
+            <button type="button" className={BTN_SECONDARY} onClick={() => setEditing(true)}>
+              Edit values
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {editing ? (

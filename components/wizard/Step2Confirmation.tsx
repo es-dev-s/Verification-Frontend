@@ -16,7 +16,7 @@ import {
 } from "@/lib/wizard";
 import type { DegreeLevel } from "@/lib/types";
 import { BTN_PRIMARY, BTN_SECONDARY, FOCUS_RING, Spinner } from "./UploadTile";
-import { DurationStatusPill, formatYears } from "./transcriptUi";
+import { CreditConversionPill, DurationStatusPill, formatYears } from "./transcriptUi";
 
 /** Correction from the duration check; undefined = unchanged, null = clear. */
 export type DurationCorrection = {
@@ -333,7 +333,10 @@ function DurationCheckRow({
         <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
           {q.title?.trim() || q.degreeLevel}
         </p>
-        <DurationStatusPill status={check.status} />
+        <div className="flex flex-wrap items-center gap-2">
+          <CreditConversionPill label={q.creditConversion} />
+          <DurationStatusPill status={check.status} />
+        </div>
       </div>
       <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
         <div>

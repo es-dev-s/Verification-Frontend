@@ -700,9 +700,17 @@ export function Step3Assessment({
       .sort((a, b) => (order.get(a.anzscoCode) ?? 99) - (order.get(b.anzscoCode) ?? 99));
   }, [family, candidates, primaryCandidate]);
 
-  // Top matches row layout (UI only): primary + alternatives + ET in one row.
+  // Top matches grid layout (UI only). Primary in column 1; alternatives and
+  // ET (Maybe Suitable) fill columns 2-3. With alternatives + ET, the primary
+  // spans both rows and the last card spans columns 2-3 underneath.
   const hasMaybeSuitable = Boolean(family?.maybeSuitable);
-  const rowCardCount = 1 + alternativeCandidates.length + (hasMaybeSuitable ? 1 : 0);
+  const secondaryCount = alternativeCandidates.length + (hasMaybeSuitable ? 1 : 0);
+  /** Primary + 1 alternative + ET: alternative on top, ET below, both spanning cols 2-3. */
+  const stackSecondaries = hasMaybeSuitable && alternativeCandidates.length === 1;
+  const primarySpansRows = secondaryCount >= 3 || stackSecondaries;
+  /** Index of an alternative that spans cols 2-3 on the second row (3 alternatives, no ET). */
+  const wideAlternativeIndex =
+    stackSecondaries ? 0 : !hasMaybeSuitable && secondaryCount === 3 ? 2 : -1;
 
   const [viewingCode, setViewingCode] = useState<string | null>(null);
   const [confirmedCode, setConfirmedCode] = useState<string | null>(null);
@@ -935,14 +943,14 @@ export function Step3Assessment({
               </p>
             </div>
             <div
-              className={`grid items-start gap-3 ${
-                rowCardCount >= 4
-                  ? "md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]"
-                  : rowCardCount === 3
-                    ? "md:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr]"
-                    : rowCardCount === 2
-                      ? "md:grid-cols-[1.5fr_1fr]"
-                      : ""
+              className={`grid w-full gap-3 ${
+                secondaryCount >= 2
+                  ? `md:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr] ${
+                      primarySpansRows ? "lg:grid-rows-[auto_1fr]" : ""
+                    }`
+                  : secondaryCount === 1
+                    ? "lg:grid-cols-[1.3fr_2fr]"
+                    : ""
               }`}
             >
             {(() => {
@@ -956,8 +964,8 @@ export function Step3Assessment({
                   type="button"
                   onClick={() => setViewingCode(c.anzscoCode)}
                   className={`w-full min-w-0 rounded-2xl border p-4 text-left transition ${
-                    rowCardCount === 3 ? "md:col-span-2 lg:col-span-1" : ""
-                  } ${
+                    secondaryCount >= 2 ? "md:col-span-2 lg:col-span-1" : ""
+                  } ${primarySpansRows ? "lg:row-span-2" : ""} ${
                     active
                       ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
                       : "border-line bg-surface/95 hover:border-line-strong"
@@ -1003,14 +1011,14 @@ export function Step3Assessment({
                   <CandidateMetrics
                     c={c}
                     className={`mt-3 grid gap-x-5 gap-y-1 text-xs text-ink-muted ${
-                      rowCardCount >= 4 ? "sm:grid-cols-2 lg:grid-cols-1" : "sm:grid-cols-2"
+                      secondaryCount >= 2 ? "sm:grid-cols-2 lg:grid-cols-1" : "sm:grid-cols-2"
                     }`}
                   />
                 </button>
               );
             })()}
 
-            {alternativeCandidates.map((c) => {
+            {alternativeCandidates.map((c, altIndex) => {
                   const active = selected?.anzscoCode === c.anzscoCode;
                   const adj = adjByCode.get(c.anzscoCode);
                   const shown = adj?.adjustedConfidence ?? resolveConfidenceScore(c);
@@ -1019,7 +1027,11 @@ export function Step3Assessment({
                       key={c.anzscoCode}
                       type="button"
                       onClick={() => setViewingCode(c.anzscoCode)}
-                      className={`min-w-0 rounded-xl border px-3 py-2.5 text-left transition ${
+                      className={`min-w-0 self-start rounded-xl border px-3 py-2.5 text-left transition ${
+                        altIndex === wideAlternativeIndex
+                          ? "md:col-span-2"
+                          : ""
+                      } ${
                         active
                           ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
                           : "border-line bg-surface/95 hover:border-line-strong"
@@ -1058,27 +1070,30 @@ export function Step3Assessment({
                   ? candidates.find((c) => c.anzscoCode === et.anzscoCode) ?? null
                   : null;
                 const active = etCandidate && selected?.anzscoCode === etCandidate.anzscoCode;
+                // Wide card (cols 2-3): title + code left, pill + confidence right.
                 const body = (
-                  <>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-mono text-[10px] tabular-nums text-ink-muted">
-                          {et.anzscoCode}
-                        </p>
-                        <p className="mt-0.5 line-clamp-2 break-words text-[13px] font-medium leading-snug text-ink">
-                          {et.title}
-                        </p>
-                      </div>
-                      <p className="shrink-0 font-mono text-[13px] font-semibold tabular-nums text-ink">
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-[10px] tabular-nums text-ink-muted">
+                        {et.anzscoCode}
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 break-words text-[13px] font-medium leading-snug text-ink">
+                        {et.title}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="rounded-full bg-[var(--warning-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--warning-ink)]">
+                        {et.label}
+                      </span>
+                      <p className="font-mono text-[13px] font-semibold tabular-nums text-ink">
                         {formatAdjustedPct(et.adjustedConfidence)}
                       </p>
                     </div>
-                    <span className="mt-1.5 inline-block rounded-full bg-[var(--warning-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--warning-ink)]">
-                      {et.label}
-                    </span>
-                  </>
+                  </div>
                 );
-                const cls = `min-w-0 rounded-xl border px-3 py-2.5 text-left transition ${
+                const cls = `flex min-w-0 items-center rounded-xl border px-3 py-2.5 text-left transition ${
+                  secondaryCount >= 2 ? "md:col-span-2 lg:col-start-2" : ""
+                } ${primarySpansRows ? "self-stretch" : "self-start"} ${
                   active
                     ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
                     : "border-line bg-surface/95"

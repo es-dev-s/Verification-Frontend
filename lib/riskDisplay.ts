@@ -3,6 +3,7 @@ import type {
   AssessmentResult,
   PrecedentRiskLevel,
   RiskLevel,
+  RiskScoringBreakdown,
 } from "./types";
 
 /** Shared display helpers for the risk (Step 4) and final review (Step 5) screens. */
@@ -63,24 +64,35 @@ export function precedentRiskBadge(level: PrecedentRiskLevel): {
   }
 }
 
-/** Mirrors api/src/risk/scoreRisk.ts riskLevelFromScore bands. */
-export function riskBandFromScore(pct: number): RiskLevel {
-  if (pct >= 85) return "no_risk";
-  if (pct >= 75) return "low";
-  if (pct >= 50) return "medium";
+export type RiskBands = RiskScoringBreakdown["bands"];
+
+/**
+ * Category for an overall score. The thresholds always come from the API
+ * (risk.scoring.bands, from api/src/risk/riskBands.config.ts); there is no
+ * copy of them in the web app.
+ */
+export function riskBandFromScore(pct: number, bands: RiskBands): RiskLevel {
+  if (pct >= bands.noRisk) return "no_risk";
+  if (pct >= bands.low) return "low";
+  if (pct >= bands.medium) return "medium";
   return "high";
 }
 
-export function riskBandRange(level: RiskLevel): string {
+function below(n: number): string {
+  return `${Math.round((n - 0.1) * 10) / 10}`;
+}
+
+/** Score range of a category (e.g. "low" → "<low>–<noRisk − 0.1>%"), from the API bands. */
+export function riskBandRange(level: RiskLevel, bands: RiskBands): string {
   switch (level) {
     case "no_risk":
-      return "85% and above";
+      return `${bands.noRisk}% and above`;
     case "low":
-      return "75–84.9%";
+      return `${bands.low}–${below(bands.noRisk)}%`;
     case "medium":
-      return "50–74.9%";
+      return `${bands.medium}–${below(bands.low)}%`;
     case "high":
-      return "below 50%";
+      return `below ${bands.medium}%`;
   }
 }
 

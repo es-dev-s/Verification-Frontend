@@ -19,11 +19,3 @@ export type Education = {
   start: string | null;
   end: string | null;
 };
-
-export type Experience = {
-  company: string | null;
-  title: string | null;
-  start: string | null;
-  end: string | null;
-  description: string | null;
-};

@@ -52,6 +52,10 @@ export function Gate1Box({ gate }: { gate: Gate1Decision }) {
             <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-[11px] font-medium text-ink-muted">
               Stated duration used
             </span>
+          ) : gate.creditConversionNote ? (
+            <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-[11px] font-medium text-ink-muted">
+              {gate.creditConversionNote}
+            </span>
           ) : null}
           <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${RESULT_CLASS[gate.result]}`}>
             {RESULT_LABEL[gate.result]}

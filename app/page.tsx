@@ -831,6 +831,8 @@ export default function Home() {
     setWizardStep(5);
     setSaveMsg(null);
     setRiskError(null);
+    // The qualification blocks show the duration confirmed in Verify details.
+    if (!transcriptData && !transcriptLoading) void loadTranscriptData("read");
     setRiskLoading(true);
     try {
       const label = `${candidate.title} (${candidate.anzscoCode})`;
@@ -878,6 +880,10 @@ export default function Home() {
   function goToReviewStep(step: 5 | 6 | 7) {
     setWizardStep(step);
     setSaveMsg(null);
+    // Final review shows the duration confirmed in Verify details.
+    if (step === 6 && !transcriptData && !transcriptLoading) {
+      void loadTranscriptData("read");
+    }
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -969,6 +975,7 @@ export default function Home() {
           qualifications={qualifications}
           experience={experience}
           engineeringTitledDegree={engineeringTitledDegree}
+          transcriptData={transcriptData}
           onBack={() => goToReviewStep(5)}
           onContinue={() => goToReviewStep(7)}
         />
@@ -988,6 +995,7 @@ export default function Home() {
           onRetry={() => void retryRisk()}
           onCompetenceChange={(c) => void onCompetenceChange(c)}
           onContinue={() => goToReviewStep(6)}
+          transcriptData={transcriptData}
         />
       ) : wizardStep === 4 ? (
         <Step3Assessment

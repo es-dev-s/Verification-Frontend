@@ -62,6 +62,18 @@ export function DurationStatusPill({ status }: { status: DurationCheckStatus }) 
   );
 }
 
+/** Flag shown when the counted duration was converted from the credit total. */
+export function CreditConversionPill({ label }: { label: string | null | undefined }) {
+  if (!label) return null;
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${STATUS_CLASS.fallback}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 /** Small label/value tile used by Transcript data and Verify details. */
 export function DataTile({
   label,

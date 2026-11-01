@@ -6,6 +6,7 @@ import type {
   DegreeLevel,
   ExperienceRow,
   RiskAssessmentResult,
+  TranscriptDataSummary,
 } from "@/lib/types";
 import {
   buildConfirmationQualifications,
@@ -104,6 +105,16 @@ function competenceClass(competent: boolean): string {
     : "bg-[#f8ecec] text-[#8a3a3a] ring-1 ring-[#e2c4c4]";
 }
 
+/** Applied weight of one score component, from the API scoring breakdown. */
+function weightHint(
+  risk: RiskAssessmentResult,
+  key: "fundamental" | "core" | "historical",
+): string {
+  const c = risk.scoring.components.find((x) => x.key === key);
+  if (!c || !c.used) return "Not used";
+  return `${Math.round(c.appliedWeight * 1000) / 10}% weight`;
+}
+
 /** Build the overall review sentences strictly from data already on screen. */
 function buildOverallReview(
   occupation: { code: string; title: string } | null,
@@ -117,9 +128,7 @@ function buildOverallReview(
 
   if (risk) {
     lines.push(
-      risk.riskBasis
-        ? `${name} is rated ${riskBadge(risk.riskLevel).label.toLowerCase()}, based on ${risk.riskBasis}${risk.historicalModifierApplied ? " and moved one level worse by historical outcomes" : ""}.`
-        : `${name} is rated ${riskBadge(risk.riskLevel).label.toLowerCase()} with ${formatPct(risk.overallPct)} overall alignment (${riskBandRange(risk.riskLevel)} band).`,
+      `${name} is rated ${riskBadge(risk.riskLevel).label.toLowerCase()} with ${formatPct(risk.overallPct)} overall alignment (${riskBandRange(risk.riskLevel, risk.scoring.bands)} band).`,
     );
   } else if (occupation) {
     lines.push(`${name} has no risk result yet — run Step 5 to complete the review.`);
@@ -145,11 +154,7 @@ function buildOverallReview(
     } else {
       lines.push("No matching past cases were found for this occupation.");
     }
-    if (risk.workExperienceBoost && risk.workExperienceDelta > 0) {
-      lines.push(
-        `Related work experience added ${risk.workExperienceDelta} pts (from ${formatPct(risk.overallPctBeforeWork)}).`,
-      );
-    } else if (risk.workExperienceBoost && risk.riskBasis) {
+    if (risk.workExperienceBoost) {
       lines.push("Related work experience is noted as context only.");
     }
     lines.push(
@@ -172,6 +177,7 @@ export function Step5FinalReview({
   qualifications,
   experience,
   engineeringTitledDegree,
+  transcriptData = null,
   onBack,
   onContinue,
 }: {
@@ -192,6 +198,8 @@ export function Step5FinalReview({
   >;
   experience: ExperienceRow[];
   engineeringTitledDegree: boolean | null;
+  /** Verify details summary: source of the confirmed study duration. */
+  transcriptData?: TranscriptDataSummary | null;
   onBack: () => void;
   onContinue: () => void;
 }) {
@@ -207,8 +215,11 @@ export function Step5FinalReview({
   );
 
   const degreeBlocks = useMemo(
-    () => buildConfirmationQualifications(selectedLevels, qualifications),
-    [selectedLevels, qualifications],
+    () =>
+      buildConfirmationQualifications(selectedLevels, qualifications, undefined, {
+        transcriptData,
+      }),
+    [selectedLevels, qualifications, transcriptData],
   );
 
   const roles = useMemo(
@@ -284,9 +295,7 @@ export function Step5FinalReview({
                     {competenceLabel(risk.competence)}
                   </span>
                   <span className="text-xs tabular-nums text-ink-muted sm:pt-1">
-                    {risk.riskBasis
-                      ? risk.riskBasis
-                      : `${formatPct(risk.overallPct)} overall alignment`}
+                    {`${formatPct(risk.overallPct)} overall alignment`}
                   </span>
                 </div>
               ) : null}
@@ -323,7 +332,19 @@ export function Step5FinalReview({
                     <DetailItem label="Degree title" value={block.degreeTitle} emphasis />
                     <DetailItem label="Institution" value={block.institution} />
                     <DetailItem label="Country" value={block.country} />
-                    <DetailItem label="Duration (years)" value={block.durationYears} />
+                    <DetailItem
+                      label="Duration (years)"
+                      value={
+                        <>
+                          {block.durationYears}
+                          {block.durationSource ? (
+                            <span className="block text-[11px] font-normal text-ink-muted">
+                              {block.durationSource}
+                            </span>
+                          ) : null}
+                        </>
+                      }
+                    />
                   </dl>
                 </div>
               ))}
@@ -466,24 +487,6 @@ export function Step5FinalReview({
           {risk ? (
             <>
               <div className="flex flex-wrap items-end justify-between gap-3">
-                {risk.riskBasis ? (
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-                    Based on
-                  </p>
-                  <p className="mt-1 text-base font-semibold tracking-tight text-ink">
-                    {risk.riskBasis}
-                  </p>
-                  <p className="mt-0.5 text-xs text-ink-muted">
-                    {risk.historicalModifierApplied
-                      ? "Moved one level worse by historical outcomes. "
-                      : ""}
-                    {risk.workExperienceBoost
-                      ? "Related work experience noted (context only)"
-                      : "No related work experience noted"}
-                  </p>
-                </div>
-                ) : (
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                     Overall alignment
@@ -492,12 +495,12 @@ export function Step5FinalReview({
                     {formatPct(risk.overallPct)}
                   </p>
                   <p className="mt-0.5 text-xs text-ink-muted">
-                    {risk.workExperienceBoost && risk.workExperienceDelta > 0
-                      ? `Includes +${risk.workExperienceDelta} pts work experience (from ${formatPct(risk.overallPctBeforeWork)})`
-                      : "No related work experience boost"}
+                    {riskBandRange(risk.riskLevel, risk.scoring.bands)} band
+                    {risk.workExperienceBoost
+                      ? " · related work experience noted (context only)"
+                      : ""}
                   </p>
                 </div>
-                )}
                 {badge ? (
                   <span
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.className}`}
@@ -518,27 +521,21 @@ export function Step5FinalReview({
                   hint={
                     risk.assessmentFlow === "vocational_units"
                       ? "Not used (unit-code assessment)"
-                      : risk.riskBasis
-                        ? "For reference"
-                        : "30% weight"
+                      : weightHint(risk, "fundamental")
                   }
                 />
                 <MetricTile
                   label={risk.assessmentFlow === "vocational_units" ? "Core units" : "Core"}
                   value={formatPct(risk.corePct)}
-                  hint={risk.riskBasis ? "For reference" : "50% weight"}
+                  hint={weightHint(risk, "core")}
                 />
                 <MetricTile
                   label="Historical"
                   value={formatPct(risk.historicalPct)}
                   hint={
-                    risk.riskBasis
-                      ? risk.historical.totalCases > 0
-                        ? `${risk.historical.positive}/${risk.historical.totalCases} positive · ${risk.historicalModifierApplied ? "moved rating one level" : "context only"}`
-                        : "No cases · context only"
-                      : risk.historical.totalCases > 0
-                        ? `${risk.historical.positive}/${risk.historical.totalCases} positive · 20% weight`
-                        : "No cases · 20% weight"
+                    risk.historical.totalCases > 0
+                      ? `${risk.historical.positive}/${risk.historical.totalCases} positive · ${weightHint(risk, "historical")}`
+                      : "No cases · not used"
                   }
                 />
               </div>
