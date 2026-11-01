@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { getAssessOccupations } from "@/lib/api";
 import type { ManualOccupationOption } from "@/lib/types";
 import { BTN_PRIMARY, FOCUS_RING } from "./UploadTile";
@@ -12,16 +12,23 @@ type Current = { anzscoCode: string; title: string; occupationId: string } | nul
 /**
  * Step 4, Gate 1 = manual review: the assessor picks one ANZSCO occupation
  * (code or searchable name) and runs the normal matching for it only.
+ * `compact`: one row (search by code or name + action), no section frame;
+ * used by the always-on "Check an ANZSCO" row.
  */
 export function ManualOccupationPicker({
   current,
   busy,
   onRun,
+  compact = false,
+  actionLabel = "Run matching",
 }: {
   current: Current;
   busy?: boolean;
   onRun: (occupationId: string) => void;
+  compact?: boolean;
+  actionLabel?: string;
 }) {
+  const listId = useId();
   const [options, setOptions] = useState<ManualOccupationOption[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [code, setCode] = useState(current?.anzscoCode ?? "");
@@ -98,6 +105,90 @@ export function ManualOccupationPicker({
 
   const message = loadError ?? codeMessage;
 
+  if (compact) {
+    return (
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 gap-2">
+          <div className="relative min-w-0 flex-1">
+            <input
+              className={INPUT}
+              role="combobox"
+              aria-label="ANZSCO code or occupation"
+              aria-expanded={open}
+              aria-controls={listId}
+              placeholder={options ? "Search ANZSCO code or occupation" : "Loading occupations…"}
+              value={query}
+              disabled={!options}
+              onFocus={() => setOpen(true)}
+              onBlur={() => setOpen(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !busy) {
+                  const usable = filtered.filter((o) => o.available && o.occupationId);
+                  const target = picked ?? (usable.length === 1 ? usable[0]! : null);
+                  if (target?.occupationId) {
+                    if (!picked) choose(target);
+                    onRun(target.occupationId);
+                  }
+                }
+                if (e.key === "Escape") setOpen(false);
+              }}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPickedId(null);
+                setCode("");
+                setOpen(true);
+              }}
+            />
+            {open && options ? (
+              <ul
+                id={listId}
+                role="listbox"
+                className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-[0_8px_24px_rgba(36,31,42,0.12)]"
+              >
+                {filtered.length ? (
+                  filtered.map((o) => (
+                    <li
+                      key={`${o.anzscoCode}-${o.occupationId ?? o.title}`}
+                      role="option"
+                      aria-selected={o.occupationId !== null && o.occupationId === pickedId}
+                      aria-disabled={!o.available}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        choose(o);
+                      }}
+                      className={`flex cursor-pointer items-baseline justify-between gap-3 px-3 py-2 text-sm hover:bg-brand-soft/50 ${
+                        o.available ? "text-ink" : "text-ink-faint"
+                      }`}
+                    >
+                      <span className="min-w-0 truncate">
+                        <span className="font-mono tabular-nums text-ink-muted">{o.anzscoCode}</span>
+                        <span className="ml-2">{o.title}</span>
+                      </span>
+                      {!o.available ? <span className="shrink-0 text-xs">No rubric</span> : null}
+                    </li>
+                  ))
+                ) : (
+                  <li className="px-3 py-2 text-sm text-ink-muted">No matching occupation</li>
+                )}
+              </ul>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className={BTN_PRIMARY}
+            disabled={!picked || busy}
+            onClick={() => picked?.occupationId && onRun(picked.occupationId)}
+          >
+            {busy ? "Checking…" : actionLabel}
+          </button>
+        </div>
+        {message ? (
+          <p className="mt-2 text-sm leading-snug text-[var(--warning-ink)]">{message}</p>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <section
       aria-label="Assessor-selected occupation"
@@ -128,7 +219,7 @@ export function ManualOccupationPicker({
               className={INPUT}
               role="combobox"
               aria-expanded={open}
-              aria-controls="manual-occupation-list"
+              aria-controls={listId}
               placeholder={options ? "Search occupations" : "Loading occupations…"}
               value={query}
               disabled={!options}
@@ -144,7 +235,7 @@ export function ManualOccupationPicker({
           </label>
           {open && options ? (
             <ul
-              id="manual-occupation-list"
+              id={listId}
               role="listbox"
               className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-[0_8px_24px_rgba(36,31,42,0.12)]"
             >
@@ -183,7 +274,7 @@ export function ManualOccupationPicker({
           disabled={!picked || busy}
           onClick={() => picked?.occupationId && onRun(picked.occupationId)}
         >
-          Run matching
+          {actionLabel}
         </button>
       </div>
       {message ? (

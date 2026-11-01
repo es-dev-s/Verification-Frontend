@@ -26,6 +26,21 @@ export function formatCountedDuration(q: QualificationTranscriptSummary): string
   return terms && unit ? `${formatYears(years)} · ${terms} ${unit}` : formatYears(years);
 }
 
+const UNIT_NAME: Record<string, string> = {
+  semester: "Semester",
+  trimester: "Trimester",
+  quarter: "Quarter",
+  year: "Year",
+};
+
+/** "Semester 3 – Semester 8" / "Year 2 – Year 4"; null when the periods are unknown. */
+export function formatPeriodRange(q: QualificationTranscriptSummary): string | null {
+  const r = q.transcript.periodRange;
+  if (!r) return null;
+  const name = UNIT_NAME[r.unit] ?? r.unit;
+  return r.first === r.last ? `${name} ${r.first}` : `${name} ${r.first} – ${name} ${r.last}`;
+}
+
 export function formatCredits(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return `${Math.round(n * 10) / 10} credits`;
@@ -37,19 +52,19 @@ export function formatShare(n: number | null | undefined): string {
 }
 
 const STATUS_LABEL: Record<DurationCheckStatus, string> = {
-  match: "Durations match",
-  mismatch: "Requires manual review",
-  fallback: "Stated duration used",
-  no_stated: "Counted duration used",
-  missing: "Requires manual review",
+  edited: "Edited by assessor",
+  transcript: "From transcript",
+  credits: "Converted from credits",
+  missing: "Not available",
 };
 
+const NEUTRAL_PILL = "bg-surface-tint text-ink-muted ring-1 ring-line";
+
 const STATUS_CLASS: Record<DurationCheckStatus, string> = {
-  match: "bg-success-soft text-success",
-  mismatch: "bg-[#fff7ed] text-[#b45309] ring-1 ring-[#fdba74]/60",
+  edited: NEUTRAL_PILL,
+  transcript: "bg-success-soft text-success",
+  credits: NEUTRAL_PILL,
   missing: "bg-[#fff7ed] text-[#b45309] ring-1 ring-[#fdba74]/60",
-  fallback: "bg-surface-tint text-ink-muted ring-1 ring-line",
-  no_stated: "bg-surface-tint text-ink-muted ring-1 ring-line",
 };
 
 export function DurationStatusPill({ status }: { status: DurationCheckStatus }) {
@@ -67,7 +82,7 @@ export function CreditConversionPill({ label }: { label: string | null | undefin
   if (!label) return null;
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${STATUS_CLASS.fallback}`}
+      className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${NEUTRAL_PILL}`}
     >
       {label}
     </span>

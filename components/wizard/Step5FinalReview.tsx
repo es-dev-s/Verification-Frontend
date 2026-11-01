@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { lateralRouteLine } from "./LateralEntryCard";
 import type {
   AssessmentResult,
   DegreeLevel,
@@ -192,7 +193,6 @@ export function Step5FinalReview({
         degreeTitle: string | null;
         institution: string | null;
         country: string | null;
-        durationYears: number | null;
       }
     >
   >;
@@ -213,6 +213,8 @@ export function Step5FinalReview({
     () => resolveAssessmentSummary(assessment, occupation?.code),
     [assessment, occupation],
   );
+
+  const lateralLine = lateralRouteLine(assessment?.lateralEntry ?? transcriptData?.lateralEntry);
 
   const degreeBlocks = useMemo(
     () =>
@@ -357,6 +359,7 @@ export function Step5FinalReview({
               label="Engineering-titled degree"
               value={yesNo(engineeringTitledDegree)}
             />
+            {lateralLine ? <DetailItem label="Lateral entry" value={lateralLine} /> : null}
           </dl>
         </section>
 

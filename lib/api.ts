@@ -264,6 +264,17 @@ export async function runAssessment(
   });
 }
 
+/** Check one ANZSCO on the saved subjects (read-only: nothing is saved). */
+export async function checkAssessOccupation(
+  caseId: string,
+  occupation: string,
+): Promise<import("./types").OccupationCheck> {
+  return api(`/cases/${caseId}/assess/check`, {
+    method: "POST",
+    body: JSON.stringify({ occupation }),
+  });
+}
+
 /** Occupations an assessor can pick for a manual-review case. */
 export async function getAssessOccupations(): Promise<
   import("./types").ManualOccupationOption[]
@@ -300,6 +311,41 @@ export async function saveTranscriptOverrides(
     method: "PUT",
     body: JSON.stringify(body),
   });
+}
+
+/** Lateral entry: answer the question ("answer") or the re-confirmation ("confirm"). */
+export async function answerLateralEntry(
+  caseId: string,
+  question: "answer" | "confirm",
+  answer: "yes" | "no",
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/lateral-entry`, {
+    method: "PUT",
+    body: JSON.stringify({ question, answer }),
+  });
+}
+
+/** Lateral entry: upload the earlier study's transcript (kept apart from the bachelor's own). */
+export async function uploadPriorStudyTranscript(
+  caseId: string,
+  file: File,
+): Promise<{ documentId: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("type", "TRANSCRIPT");
+  form.append("degreeLevel", "bachelor");
+  const qs = new URLSearchParams({ type: "TRANSCRIPT", degreeLevel: "bachelor", role: "prior_study" });
+  return api(`/cases/${caseId}/documents?${qs.toString()}`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+/** Lateral entry: read the earlier study's subjects once its transcript is processed. */
+export async function readPriorStudySubjects(
+  caseId: string,
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/lateral-entry/prior-subjects`, { method: "POST" });
 }
 
 export async function getAssessment(

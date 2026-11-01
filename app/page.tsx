@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  checkAssessOccupation,
   createCase,
   deleteDocument,
   extractTranscriptData,
@@ -93,8 +94,6 @@ function buildDraftBody(
       degreeTitle: q.degreeTitle || null,
       institution: q.institution || null,
       country: q.country || null,
-      durationYears: q.durationYears,
-      durationCalculated: q.durationCalculated,
     };
   });
   const bachelor = quals.find((q) => q.degreeLevel === "bachelor");
@@ -105,8 +104,6 @@ function buildDraftBody(
           degreeTitle: bachelor.degreeTitle,
           institution: bachelor.institution,
           country: bachelor.country,
-          durationYears: bachelor.durationYears,
-          durationCalculated: bachelor.durationCalculated,
         }
       : undefined,
     experienceRows: experience.map((r) => ({
@@ -223,8 +220,6 @@ export default function Home() {
         degreeTitle: q.degreeTitle ?? "",
         institution: q.institution ?? "",
         country: q.country ?? "",
-        durationYears: q.durationYears,
-        durationCalculated: q.durationCalculated,
       };
     }
     // Legacy bachelor-only payload
@@ -233,8 +228,6 @@ export default function Home() {
         degreeTitle: row.bachelors.degreeTitle ?? "",
         institution: row.bachelors.institution ?? "",
         country: row.bachelors.country ?? "",
-        durationYears: row.bachelors.durationYears,
-        durationCalculated: row.bachelors.durationCalculated,
       };
     }
     setQualifications(nextQuals);
@@ -612,8 +605,6 @@ export default function Home() {
           degreeTitle: block.degreeTitle ?? "",
           institution: block.institution ?? "",
           country: block.country ?? "",
-          durationYears: block.durationYears ?? null,
-          durationCalculated: Boolean(block.durationCalculated),
         },
       }));
     }
@@ -756,27 +747,12 @@ export default function Home() {
     correction: DurationCorrection,
   ) {
     if (!caseId) return;
-    let nextQuals = qualifications;
-    let nextSources = fieldSources;
-    if (correction.statedYears !== undefined) {
-      nextQuals = {
-        ...qualifications,
-        [degreeLevel]: {
-          ...(qualifications[degreeLevel] ?? emptyQualification()),
-          durationYears: correction.statedYears,
-          durationCalculated: false,
-        },
-      };
-      setQualifications(nextQuals);
-    }
     if (correction.award !== undefined) {
-      nextSources = withFieldFinal(fieldSources, degreeLevel, AWARD_LEVEL_FIELD, correction.award);
+      const nextSources = withFieldFinal(fieldSources, degreeLevel, AWARD_LEVEL_FIELD, correction.award);
       setFieldSources(nextSources);
-    }
-    if (correction.statedYears !== undefined || correction.award !== undefined) {
       await saveDraft(
         caseId,
-        buildDraftBody(selectedLevels, nextQuals, experience, nextSources, engineeringTitledDegree),
+        buildDraftBody(selectedLevels, qualifications, experience, nextSources, engineeringTitledDegree),
       );
       setDirty(false);
     }
@@ -999,6 +975,7 @@ export default function Home() {
         />
       ) : wizardStep === 4 ? (
         <Step3Assessment
+          key={caseId ?? "no-case"}
           assessment={assessment}
           loading={assessLoading}
           error={assessError}
@@ -1010,12 +987,16 @@ export default function Home() {
           onRunManualOccupation={(occupationId) =>
             void goToAssessmentStep({ manualOccupation: occupationId })
           }
+          onCheckOccupation={
+            caseId ? (occupationId) => checkAssessOccupation(caseId, occupationId) : undefined
+          }
           onConfirmOccupation={(candidate: AnzscoCandidate) => {
             void goToRiskStep(candidate);
           }}
         />
       ) : wizardStep === 3 ? (
         <Step2Confirmation
+          caseId={caseId}
           selectedLevels={selectedLevels}
           qualifications={qualifications}
           experience={experience}
@@ -1025,6 +1006,7 @@ export default function Home() {
           transcriptLoading={transcriptLoading}
           transcriptError={transcriptError}
           onRetryTranscriptData={() => void loadTranscriptData("read")}
+          onTranscriptDataChange={setTranscriptData}
           onCorrect={onCorrectDuration}
           onEngineeringTitledChange={(v) => void onEngineeringTitledChange(v)}
           onBack={() => {
@@ -1391,22 +1373,6 @@ function EducationBlock({
           alternatives={meta("country")?.alternatives}
           onPickAlt={(v) => onChange("country", v)}
           onChange={(v) => onChange("country", v)}
-        />
-        <Field
-          label={
-            value.durationCalculated
-              ? "Study duration (years, calculated)"
-              : "Study duration (years)"
-          }
-          value={value.durationYears != null ? String(value.durationYears) : ""}
-          confidence={meta("durationYears")?.confidence}
-          source={docTypeFor("durationYears")}
-          conflict={Boolean(meta("durationYears")?.alternatives?.length)}
-          alternatives={meta("durationYears")?.alternatives}
-          onPickAlt={(v) => onChange("durationYears", v ? Number(v) : null)}
-          onChange={(v) =>
-            onChange("durationYears", v === "" ? null : Number(v))
-          }
         />
         <label className="block">
           <span className="mb-1.5 flex items-center gap-2 text-sm font-medium text-ink">

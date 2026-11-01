@@ -16,16 +16,17 @@ import {
 } from "@/lib/wizard";
 import type { DegreeLevel } from "@/lib/types";
 import { BTN_PRIMARY, BTN_SECONDARY, FOCUS_RING, Spinner } from "./UploadTile";
-import { CreditConversionPill, DurationStatusPill, formatYears } from "./transcriptUi";
+import { DurationStatusPill, formatCountedDuration, formatYears } from "./transcriptUi";
+import { LateralEntrySection } from "./LateralEntryCard";
 
-/** Correction from the duration check; undefined = unchanged, null = clear. */
+/** Correction from the study duration row; undefined = unchanged, null = clear. */
 export type DurationCorrection = {
-  statedYears?: number | null;
   countedYears?: number | null;
   award?: AwardLevel | null;
 };
 
 export function Step2Confirmation({
+  caseId,
   selectedLevels,
   qualifications,
   experience,
@@ -35,12 +36,14 @@ export function Step2Confirmation({
   transcriptLoading,
   transcriptError,
   onRetryTranscriptData,
+  onTranscriptDataChange,
   onCorrect,
   onEngineeringTitledChange,
   onBack,
   onNext,
   nextBusy,
 }: {
+  caseId: string | null;
   selectedLevels: DegreeLevel[];
   qualifications: Partial<
     Record<
@@ -49,7 +52,6 @@ export function Step2Confirmation({
         degreeTitle: string | null;
         institution: string | null;
         country: string | null;
-        durationYears: number | null;
       }
     >
   >;
@@ -60,6 +62,7 @@ export function Step2Confirmation({
   transcriptLoading: boolean;
   transcriptError: string | null;
   onRetryTranscriptData: () => void;
+  onTranscriptDataChange: (data: TranscriptDataSummary) => void;
   onCorrect: (degreeLevel: DegreeLevel, correction: DurationCorrection) => Promise<void>;
   onEngineeringTitledChange: (value: boolean) => void;
   onBack: () => void;
@@ -69,10 +72,25 @@ export function Step2Confirmation({
   const blocks: ConfirmationQualification[] = buildConfirmationQualifications(
     selectedLevels,
     qualifications,
+    undefined,
+    { transcriptData },
   );
   const summaryFor = (level: DegreeLevel) =>
     transcriptData?.qualifications.find((q) => q.degreeLevel === level) ?? null;
-  const canContinue = Boolean(transcriptData?.durationOk) && !transcriptLoading;
+  const lateral = transcriptData?.lateralEntry ?? null;
+  const showLateral =
+    Boolean(caseId) && !transcriptLoading && lateral != null && lateral.route !== 1 && selectedLevels.includes("bachelor");
+  const lateralOpen = showLateral && lateral!.step !== "done";
+  // The lateral-entry dialog opens by itself once on entering Verify details
+  // while the check is unanswered; Continue reopens it until it is resolved.
+  const [lateralDialog, setLateralDialog] = useState(false);
+  const [lateralAutoOpened, setLateralAutoOpened] = useState(false);
+  if (lateralOpen && !lateralAutoOpened) {
+    setLateralAutoOpened(true);
+    setLateralDialog(true);
+  }
+  // A missing duration does not block: Gate 1 sends it to manual review.
+  const canContinue = Boolean(transcriptData) && !transcriptLoading && !lateralOpen;
 
   return (
     <div>
@@ -82,7 +100,7 @@ export function Step2Confirmation({
         </h2>
         <p className="mt-2 max-w-lg text-[0.95rem] leading-relaxed text-ink-muted">
           Review the details captured in Steps 1 and 2. To change other values,
-          go back — the duration check and the engineering-titled degree question
+          go back — the study duration and the engineering-titled degree question
           can be answered here.
         </p>
         {saveMsg ? (
@@ -127,6 +145,11 @@ export function Step2Confirmation({
                     <dt className="text-ink-muted">Duration (years)</dt>
                     <dd className="font-medium text-ink">
                       {block.durationYears}
+                      {block.durationSource ? (
+                        <span className="block text-[11px] font-normal text-ink-muted">
+                          {block.durationSource}
+                        </span>
+                      ) : null}
                     </dd>
                   </div>
                   <div>
@@ -161,6 +184,16 @@ export function Step2Confirmation({
         onRetry={onRetryTranscriptData}
         onCorrect={onCorrect}
       />
+
+      {showLateral ? (
+        <LateralEntrySection
+          caseId={caseId!}
+          view={lateral!}
+          onChange={onTranscriptDataChange}
+          open={lateralDialog}
+          onOpenChange={setLateralDialog}
+        />
+      ) : null}
 
       <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
         <h3 className="mb-4 text-base font-semibold text-ink">
@@ -243,9 +276,15 @@ export function Step2Confirmation({
         </button>
         <button
           type="button"
-          onClick={onNext}
-          disabled={nextBusy || !canContinue}
-          title={canContinue ? undefined : "Resolve the duration check first"}
+          onClick={lateralOpen ? () => setLateralDialog(true) : onNext}
+          disabled={nextBusy || (!canContinue && !lateralOpen)}
+          title={
+            canContinue
+              ? undefined
+              : lateralOpen
+                ? "Answer the lateral-entry question first"
+                : "Waiting for transcript data"
+          }
           className="rounded-full bg-brand px-5 py-2.5 text-sm font-medium text-white shadow-[0_6px_16px_rgba(146,86,169,0.25)] disabled:opacity-60 hover:bg-brand-dark"
         >
           {nextBusy ? "Assessing…" : "Continue to ANZSCO assessment"}
@@ -273,22 +312,15 @@ function DurationCheckSection({
   const rows = (data?.qualifications ?? []).filter((q) => selectedLevels.includes(q.degreeLevel));
   return (
     <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
-      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-base font-semibold text-ink">Duration check</h3>
-        {data && !loading ? (
-          <span className="text-xs text-ink-muted">
-            Tolerance ±{formatYears(data.toleranceYears)}
-          </span>
-        ) : null}
-      </div>
+      <h3 className="mb-1 text-base font-semibold text-ink">Study duration</h3>
       <p className="mb-4 text-xs leading-relaxed text-ink-muted">
-        The duration counted from the transcript must match the stated duration
-        before the ANZSCO assessment.
+        Taken from Transcript data: printed years or semesters, otherwise converted
+        from credits. You can correct it here.
       </p>
       {loading ? (
         <p className="flex items-center gap-2.5 text-sm text-ink-muted">
           <Spinner />
-          Checking durations…
+          Reading durations…
         </p>
       ) : error ? (
         <div>
@@ -333,30 +365,12 @@ function DurationCheckRow({
         <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
           {q.title?.trim() || q.degreeLevel}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <CreditConversionPill label={q.creditConversion} />
-          <DurationStatusPill status={check.status} />
-        </div>
+        <DurationStatusPill status={check.status} />
       </div>
-      <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
-        <div>
-          <dt className="text-ink-muted">Stated</dt>
-          <dd className="font-medium text-ink">{formatYears(q.statedYears)}</dd>
-        </div>
-        <div>
-          <dt className="text-ink-muted">
-            Counted{q.overrides.countedYears != null ? " (entered manually)" : ""}
-          </dt>
-          <dd className="font-medium text-ink">{formatYears(q.effective.countedYears)}</dd>
-        </div>
-        <div>
-          <dt className="text-ink-muted">Difference</dt>
-          <dd className="font-medium text-ink">
-            {check.differenceYears == null ? "—" : formatYears(check.differenceYears)}
-          </dd>
-        </div>
-      </dl>
-      <p className="mt-2 text-xs leading-relaxed text-ink-muted">{check.message}</p>
+      <p className="mt-2 text-sm font-medium text-ink">
+        {q.effective.countedYears == null ? "Not available" : formatCountedDuration(q)}
+      </p>
+      <p className="mt-1 text-xs leading-relaxed text-ink-muted">{check.message}</p>
       {showForm ? (
         <CorrectionForm
           q={q}
@@ -372,7 +386,7 @@ function DurationCheckRow({
           className="mt-2 text-xs font-medium text-brand hover:text-brand-dark"
           onClick={() => setOpen(true)}
         >
-          Correct values
+          Edit
         </button>
       )}
     </div>
@@ -389,7 +403,6 @@ function CorrectionForm({
   onSave: (c: DurationCorrection) => Promise<void>;
 }) {
   const text = (n: number | null) => (n == null ? "" : String(Math.round(n * 100) / 100));
-  const [stated, setStated] = useState(text(q.statedYears));
   const [counted, setCounted] = useState(text(q.effective.countedYears));
   const [award, setAward] = useState<string>(q.awardManual ? q.award : "");
   const [busy, setBusy] = useState(false);
@@ -407,9 +420,7 @@ function CorrectionForm({
     setError(null);
     const c: DurationCorrection = {};
     try {
-      const s = years(stated, "Stated duration");
-      if (s !== q.statedYears) c.statedYears = s;
-      const n = years(counted, "Counted duration");
+      const n = years(counted, "Study duration");
       if (n !== q.effective.countedYears) {
         // Back to the transcript value clears the manual entry.
         c.countedYears = n != null && n === q.transcript.countedYears ? null : n;
@@ -438,13 +449,9 @@ function CorrectionForm({
         void submit();
       }}
     >
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">Stated duration (years)</span>
-          <input className={INPUT} inputMode="decimal" value={stated} onChange={(e) => setStated(e.target.value)} />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">Counted duration (years)</span>
+          <span className="mb-1.5 block text-sm font-medium text-ink">Study duration (years)</span>
           <input className={INPUT} inputMode="decimal" value={counted} onChange={(e) => setCounted(e.target.value)} />
           <span className="mt-1 block text-xs text-ink-muted">
             From transcript: {formatYears(q.transcript.countedYears)}
@@ -470,7 +477,7 @@ function CorrectionForm({
           </button>
         ) : null}
         <button type="submit" className={BTN_PRIMARY} disabled={busy}>
-          {busy ? "Checking…" : "Save and re-check"}
+          {busy ? "Saving…" : "Save"}
         </button>
       </div>
     </form>

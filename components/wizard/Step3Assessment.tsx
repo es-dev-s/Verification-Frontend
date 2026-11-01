@@ -5,13 +5,16 @@ import type {
   AnzscoCandidate,
   AssessmentResult,
   CoreBand,
+  OccupationCheck,
   RubricSubjectCatalogEntry,
   SubjectMatchRow,
   VocationalAssessmentDetail,
   VocationalUnitMatch,
 } from "@/lib/types";
 import { gateBlocksScoring } from "@/lib/types";
+import { FOCUS_RING } from "./UploadTile";
 import { Gate1Box } from "./Gate1Box";
+import { LateralEntryLine } from "./LateralEntryCard";
 import { ManualOccupationPicker } from "./ManualOccupationPicker";
 import { QualificationEvidenceBox } from "./QualificationEvidenceBox";
 
@@ -276,6 +279,130 @@ type GroupedRubricSubject = {
   bestMethod: SubjectMatchRow["method"];
 };
 
+/** Prior-study subject name → the Foundational rubric subject it matched (one occupation). */
+function priorStudyUse(matches: readonly SubjectMatchRow[]): Map<string, string> {
+  const used = new Map<string, string>();
+  for (const m of matches) {
+    if (!m.priorStudy || !isScoringMatch(m) || m.tier !== "tier1") continue;
+    const key = lightNormalize(m.transcriptName);
+    if (!used.has(key)) used.set(key, m.rubricSubject!);
+  }
+  return used;
+}
+
+const PRIOR_STUDY_SECTION_ID = "prior-study-subjects";
+
+/** Lateral entry: the earlier study's subjects, as their own section next to Extracted subjects. */
+function PriorStudySubjects({
+  names,
+  source,
+  matches,
+  open,
+  onToggle,
+}: {
+  names: string[];
+  /** Prior study document name(s), when known. */
+  source: string | null;
+  /** Matches of the occupation in view; prior-study ones are marked as used. */
+  matches: readonly SubjectMatchRow[];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const used = priorStudyUse(matches);
+  const usedCount = names.filter((n) => used.has(lightNormalize(n))).length;
+  const listId = `${PRIOR_STUDY_SECTION_ID}-list`;
+  return (
+    <section
+      id={PRIOR_STUDY_SECTION_ID}
+      aria-label="Prior study subjects"
+      className="scroll-mt-6 overflow-hidden rounded-2xl border border-line bg-surface/95"
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={listId}
+        className={`flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition hover:bg-surface-subtle sm:px-5 ${FOCUS_RING}`}
+      >
+        <span className="min-w-0">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+              Prior study subjects
+            </span>
+            <span className="rounded-full bg-surface-subtle px-2 py-0.5 text-xs font-semibold tabular-nums text-ink ring-1 ring-line">
+              {names.length}
+            </span>
+          </span>
+  
+        </span>
+        <span className="flex shrink-0 items-center gap-2.5">
+          {usedCount ? (
+            <span className="rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-[#8a4f12]">
+              {usedCount} used in matching
+            </span>
+          ) : null}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className={`h-5 w-5 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`}
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </span>
+      </button>
+      {open ? (
+        <ul
+          id={listId}
+          className="grid max-h-72 gap-1.5 overflow-y-auto overscroll-contain border-t border-line px-4 py-3.5 sm:grid-cols-2 sm:px-5 [scrollbar-gutter:stable]"
+        >
+          {names.map((name, i) => {
+            const rubric = used.get(lightNormalize(name));
+            return (
+              <li
+                key={`prior-${name}-${i}`}
+                className={`rounded-lg px-2.5 py-2 text-xs leading-snug text-ink ${
+                  rubric
+                    ? "border-l-[3px] border-brand bg-brand/10"
+                    : "bg-surface-subtle"
+                }`}
+              >
+                <span className="flex items-start gap-1.5">
+                  <span className="min-w-0 flex-1 font-medium">{name}</span>
+                  {rubric ? (
+                    <svg
+                      aria-label="Used in matching"
+                      role="img"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="mt-px h-4 w-4 shrink-0 text-[#8a4f12]"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.58l7.3-7.3a1 1 0 0 1 1.4 0Z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  ) : null}
+                </span>
+                {rubric ? (
+                  <span className="mt-1 block text-xs text-[#8a4f12]">
+                    Counted as <span className="font-semibold">{rubric}</span>
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 function groupMatchedByRubric(
   matches: SubjectMatchRow[],
   tier: "tier1" | "tier2",
@@ -360,6 +487,204 @@ function TierGroupHeader({
 
 function EmptyListNote({ text }: { text: string }) {
   return <p className="py-2 text-xs text-ink-faint">{text}</p>;
+}
+
+/** Matched rubric subjects of one tier for the ANZSCO check card. */
+function CheckTierList({
+  title,
+  coverage,
+  groups,
+  onShowPriorStudy,
+}: {
+  title: string;
+  coverage: string;
+  groups: GroupedRubricSubject[];
+  onShowPriorStudy?: () => void;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-line bg-surface-subtle p-3.5">
+      <TierGroupHeader title={title} coverage={coverage} />
+      {groups.length ? (
+        <ul className="max-h-60 space-y-1.5 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+          {groups.map((g) => {
+            const prior = g.hits.filter((h) => h.priorStudy).map((h) => h.transcriptName);
+            const own = g.hits.filter((h) => !h.priorStudy).map((h) => h.transcriptName);
+            return (
+              <li key={`chk-${g.rubricSubject}`} className="rounded-lg bg-surface px-2.5 py-2">
+                <p className="text-sm font-medium leading-snug text-ink">{g.rubricSubject}</p>
+                {own.length ? (
+                  <p className="mt-0.5 text-xs text-ink-muted">from {own.join(", ")}</p>
+                ) : null}
+                {prior.length ? (
+                  onShowPriorStudy ? (
+                    <button
+                      type="button"
+                      onClick={onShowPriorStudy}
+                      title="Show prior study subjects"
+                      className={`mt-1.5 flex w-full items-center gap-2 rounded-lg border-l-[3px] border-brand bg-brand/10 px-2 py-1.5 text-left text-xs text-ink transition hover:bg-brand/20 ${FOCUS_RING}`}
+                    >
+                      <span className="shrink-0 rounded-full bg-brand/20 px-2 py-0.5 font-semibold text-[#8a4f12]">
+                        Prior study
+                      </span>
+                      <span className="min-w-0 truncate font-medium">{prior.join(", ")}</span>
+                    </button>
+                  ) : (
+                    <span className="mt-1.5 flex items-center gap-2 rounded-lg border-l-[3px] border-brand bg-brand/10 px-2 py-1.5 text-xs text-ink">
+                      <span className="shrink-0 rounded-full bg-brand/20 px-2 py-0.5 font-semibold text-[#8a4f12]">
+                        Prior study
+                      </span>
+                      <span className="min-w-0 truncate font-medium">{prior.join(", ")}</span>
+                    </span>
+                  )
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <EmptyListNote text="No matches" />
+      )}
+    </div>
+  );
+}
+
+/** Result of an assessor ANZSCO check (read-only; same card style as the occupation cards). */
+function CheckResultCard({
+  check,
+  onClose,
+  onShowPriorStudy,
+}: {
+  check: OccupationCheck;
+  onClose: () => void;
+  onShowPriorStudy?: () => void;
+}) {
+  const c = check.candidate;
+  const conf = confidenceBadge(c.confidence);
+  const tier1 = groupMatchedByRubric(c.matches, "tier1");
+  const tier2 = groupMatchedByRubric(c.matches, "tier2");
+  return (
+    <div className="mt-4 rounded-2xl border border-line bg-surface p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                c.recommended ? "bg-success-soft text-success" : "bg-surface-tint text-ink-muted"
+              }`}
+            >
+              {c.recommended ? "Would be recommended" : "Not recommended"}
+            </span>
+            {conf ? (
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${conf.className}`}>
+                {conf.label}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 break-words text-base font-semibold leading-snug text-ink">
+            {c.title}
+            <span className="font-mono tabular-nums"> · {c.anzscoCode}</span>
+          </p>
+          {c.track ? <p className="mt-0.5 text-xs text-ink-muted">{TRACK_SHORT[c.track]}</p> : null}
+        </div>
+        <div className="flex shrink-0 items-start gap-2">
+          <p className="font-mono text-2xl font-semibold tabular-nums text-brand-deeper">
+            {formatAdjustedPct(resolveConfidenceScore(c))}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close check"
+            className={`rounded-full p-1.5 text-ink-muted transition hover:bg-surface-subtle hover:text-ink ${FOCUS_RING}`}
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      {!check.trackOpen ? (
+        <p className="mt-3 rounded-lg bg-[var(--warning-soft)] px-3 py-2 text-sm text-[var(--warning-ink)]">
+          Gate 1 didn&apos;t open the {check.trackLabel ?? "occupation's"} track for this case.
+        </p>
+      ) : null}
+      <CandidateMetrics c={c} className="mt-3 grid gap-x-5 gap-y-1 text-xs text-ink-muted sm:grid-cols-3" />
+      {c.vocational ? null : (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <CheckTierList
+            title="Tier 1 · Foundational"
+            coverage={coverageLabel(c.foundationalMatched, c.foundationalExpected, c.foundationalPct)}
+            groups={tier1}
+            onShowPriorStudy={onShowPriorStudy}
+          />
+          <CheckTierList
+            title="Tier 2 · Core"
+            coverage={coverageLabel(c.coreMatched, c.coreExpected, c.corePct)}
+            groups={tier2}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Always-on assessor check: score any ANZSCO on the saved subjects (nothing is saved). */
+function AnzscoCheck({
+  onCheck,
+  onShowPriorStudy,
+}: {
+  onCheck: (occupationId: string) => Promise<OccupationCheck>;
+  onShowPriorStudy?: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<OccupationCheck | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pickerKey, setPickerKey] = useState(0);
+
+  async function run(occupationId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      setResult(await onCheck(occupationId));
+    } catch (err) {
+      setResult(null);
+      setError(err instanceof Error ? err.message : "Could not check this occupation.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function clear() {
+    setResult(null);
+    setError(null);
+    setPickerKey((k) => k + 1);
+  }
+
+  return (
+    <section
+      aria-label="Check an ANZSCO"
+      className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
+    >
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-4">
+        <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+          Check an ANZSCO
+        </p>
+        <ManualOccupationPicker
+          key={pickerKey}
+          compact
+          current={null}
+          busy={busy}
+          actionLabel="Check"
+          onRun={(id) => void run(id)}
+        />
+      </div>
+      {error ? (
+        <p className="mt-3 text-sm leading-snug text-[var(--warning-ink)]">{error}</p>
+      ) : null}
+      {result ? (
+        <CheckResultCard check={result} onClose={clear} onShowPriorStudy={onShowPriorStudy} />
+      ) : null}
+    </section>
+  );
 }
 
 function SubjectVariantsModal({
@@ -652,6 +977,7 @@ export function Step3Assessment({
   onRetry,
   onConfirmOccupation,
   onRunManualOccupation,
+  onCheckOccupation,
 }: {
   assessment: AssessmentResult | null;
   loading: boolean;
@@ -662,6 +988,8 @@ export function Step3Assessment({
   onConfirmOccupation?: (candidate: AnzscoCandidate) => void;
   /** Gate 1 manual review: score the assessor-selected occupation. */
   onRunManualOccupation?: (occupationId: string) => void;
+  /** Assessor check of any ANZSCO on the saved subjects (read-only). */
+  onCheckOccupation?: (occupationId: string) => Promise<OccupationCheck>;
 }) {
   const candidates = useMemo(
     () => (assessment ? candidatesFromAssessment(assessment) : []),
@@ -713,6 +1041,15 @@ export function Step3Assessment({
     stackSecondaries ? 0 : !hasMaybeSuitable && secondaryCount === 3 ? 2 : -1;
 
   const [viewingCode, setViewingCode] = useState<string | null>(null);
+  const [priorOpen, setPriorOpen] = useState(false);
+  const showPriorStudy = () => {
+    setPriorOpen(true);
+    requestAnimationFrame(() =>
+      document
+        .getElementById(PRIOR_STUDY_SECTION_ID)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
   const [confirmedCode, setConfirmedCode] = useState<string | null>(null);
   const [detailSubject, setDetailSubject] = useState<{
     name: string;
@@ -862,6 +1199,15 @@ export function Step3Assessment({
 
       {assessment && !loading ? (
         <div className="space-y-4">
+          {onCheckOccupation ? (
+            <AnzscoCheck
+              onCheck={onCheckOccupation}
+              onShowPriorStudy={
+                assessment.lateralEntry?.priorSubjects?.length ? showPriorStudy : undefined
+              }
+            />
+          ) : null}
+
           <section
             aria-label="Extracted subjects"
             className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
@@ -900,7 +1246,24 @@ export function Step3Assessment({
             )}
           </section>
 
+          {assessment.lateralEntry?.priorSubjects?.length ? (
+            <PriorStudySubjects
+              names={assessment.lateralEntry.priorSubjects}
+              source={
+                assessment.lateralEntry.priorDocuments
+                  .map((d) => d.name)
+                  .filter(Boolean)
+                  .join(", ") || null
+              }
+              matches={selected?.matches ?? []}
+              open={priorOpen}
+              onToggle={() => setPriorOpen((v) => !v)}
+            />
+          ) : null}
+
           {assessment.gate1 ? <Gate1Box gate={assessment.gate1} /> : null}
+
+          <LateralEntryLine view={assessment.lateralEntry} />
 
           {assessment.gate1?.result === "manual_review" && onRunManualOccupation ? (
             <ManualOccupationPicker
@@ -1292,16 +1655,49 @@ export function Step3Assessment({
                                     <p className="text-xs font-medium text-ink">
                                       {g.rubricSubject}
                                     </p>
-                                    <p className="mt-0.5 text-[11px] text-ink-muted">
-                                      {g.hits.length === 1
-                                        ? `from ${g.hits[0]!.transcriptName}`
-                                        : `${g.hits.length} transcript subjects`}
-                                    </p>
-                                    <span
-                                      className={`mt-1.5 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}
-                                    >
-                                      {badge.label}
+                                    {g.hits.every((h) => h.priorStudy) ? null : (
+                                      <p className="mt-0.5 text-[11px] text-ink-muted">
+                                        {g.hits.length === 1
+                                          ? `from ${g.hits[0].transcriptName}`
+                                          : `${g.hits.length} transcript subjects`}
+                                      </p>
+                                    )}
+                                    <span className="mt-1.5 flex flex-wrap items-center gap-1">
+                                      <span
+                                        className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}
+                                      >
+                                        {badge.label}
+                                      </span>
                                     </span>
+                                    {g.hits.some((h) => h.priorStudy) ? (
+                                      <span
+                                        role="button"
+                                        tabIndex={0}
+                                        title="Show prior study subjects"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          showPriorStudy();
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            showPriorStudy();
+                                          }
+                                        }}
+                                        className={`mt-2 flex w-full items-center gap-2 rounded-lg border-l-[3px] border-brand bg-brand/10 px-2 py-1.5 text-xs text-ink transition hover:bg-brand/20 ${FOCUS_RING}`}
+                                      >
+                                        <span className="shrink-0 rounded-full bg-brand/20 px-2 py-0.5 font-semibold text-[#8a4f12]">
+                                          Prior study
+                                        </span>
+                                        <span className="min-w-0 truncate font-medium">
+                                          {g.hits
+                                            .filter((h) => h.priorStudy)
+                                            .map((h) => h.transcriptName)
+                                            .join(", ")}
+                                        </span>
+                                      </span>
+                                    ) : null}
                                   </button>
                                 </li>
                               );

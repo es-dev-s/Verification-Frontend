@@ -48,11 +48,7 @@ export function Gate1Box({ gate }: { gate: Gate1Decision }) {
           Gate 1 · Qualification check
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          {gate.durationFallback ? (
-            <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-[11px] font-medium text-ink-muted">
-              Stated duration used
-            </span>
-          ) : gate.creditConversionNote ? (
+          {gate.creditConversionNote ? (
             <span className="rounded-full bg-surface-tint px-2.5 py-0.5 text-[11px] font-medium text-ink-muted">
               {gate.creditConversionNote}
             </span>
@@ -108,8 +104,7 @@ export function Gate1Box({ gate }: { gate: Gate1Decision }) {
               <th className="py-0.5 pr-3 font-medium">Qualification</th>
               <th className="py-0.5 pr-3 font-medium">Level</th>
               <th className="py-0.5 pr-3 font-medium">Engineering</th>
-              <th className="py-0.5 pr-3 font-medium">Stated</th>
-              <th className="py-0.5 pr-3 font-medium">Counted</th>
+              <th className="py-0.5 pr-3 font-medium">Duration</th>
               <th className="py-0.5 font-medium">Outcome</th>
             </tr>
           </thead>
@@ -127,7 +122,6 @@ export function Gate1Box({ gate }: { gate: Gate1Decision }) {
                 <td className="py-0.5 pr-3" title={q.engineeringReason}>
                   {ENGINEERING_LABEL[q.engineering]}
                 </td>
-                <td className="py-0.5 pr-3 tabular-nums">{years(q.statedYears)}</td>
                 <td className="py-0.5 pr-3 tabular-nums">{years(q.countedYears)}</td>
                 <td className="py-0.5">
                   {outcomeLabel(q.outcome)}

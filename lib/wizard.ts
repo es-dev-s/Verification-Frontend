@@ -84,14 +84,13 @@ export function buildConfirmationQualifications(
         degreeTitle: string | null;
         institution: string | null;
         country: string | null;
-        durationYears: number | null;
       }
     >
   >,
   fromApi?: Qualification[],
   /**
-   * When given (even null), the duration is the one confirmed in Verify
-   * details (see resolveStudyDuration), with its source, else "Not available".
+   * Transcript data for the case. The duration always comes from it (see
+   * resolveStudyDuration), with its source, else "Not available".
    */
   confirmed?: { transcriptData: TranscriptDataSummary | null },
 ): ConfirmationQualification[] {
@@ -102,47 +101,32 @@ export function buildConfirmationQualifications(
         degreeTitle: q.degreeTitle,
         institution: q.institution,
         country: q.country,
-        durationYears: q.durationYears,
       };
     }
   }
   return sortDegreeLevels(selectedLevels).map((level) => {
     const q = byLevel[level];
-    const resolved = confirmed
-      ? resolveStudyDuration(level, confirmed.transcriptData, q?.durationYears)
-      : null;
-    if (resolved) {
-      return {
-        degreeLevel: level,
-        label: DEGREE_LEVEL_LABELS[level],
-        degreeTitle: (q?.degreeTitle || "").trim() || "—",
-        institution: (q?.institution || "").trim() || "—",
-        country: (q?.country || "").trim() || "—",
-        durationYears:
-          resolved.years != null ? formatStudyYears(resolved.years) : "Not available",
-        durationSource: resolved.source
-          ? STUDY_DURATION_SOURCE_LABELS[resolved.source]
-          : null,
-      };
-    }
+    const resolved = confirmed ? resolveStudyDuration(level, confirmed.transcriptData) : null;
     return {
       degreeLevel: level,
       label: DEGREE_LEVEL_LABELS[level],
       degreeTitle: (q?.degreeTitle || "").trim() || "—",
       institution: (q?.institution || "").trim() || "—",
       country: (q?.country || "").trim() || "—",
-      durationYears:
-        q?.durationYears != null && Number.isFinite(q.durationYears)
-          ? String(q.durationYears)
-          : "—",
+      durationYears: !resolved
+        ? "—"
+        : resolved.years != null
+          ? formatStudyYears(resolved.years)
+          : "Not available",
+      durationSource: resolved?.source ? STUDY_DURATION_SOURCE_LABELS[resolved.source] : null,
     };
   });
 }
 
-export type StudyDurationSource = "edited" | "transcript" | "credits" | "stated";
+export type StudyDurationSource = "edited" | "transcript" | "credits";
 
 export type StudyDuration = {
-  /** Years, or null when no source has a value. */
+  /** Years, or null when Transcript data has none. */
   years: number | null;
   source: StudyDurationSource | null;
 };
@@ -151,7 +135,6 @@ export const STUDY_DURATION_SOURCE_LABELS: Record<StudyDurationSource, string> =
   edited: "edited by assessor",
   transcript: "from transcript",
   credits: "converted from credits",
-  stated: "stated",
 };
 
 function finiteYears(n: number | null | undefined): number | null {
@@ -159,30 +142,21 @@ function finiteYears(n: number | null | undefined): number | null {
 }
 
 /**
- * Study duration as confirmed in Verify details (the duration check):
- * assessor-entered count (Verify details or Transcript data) → counted from
- * the transcript (incl. credits → years) → stated (Step 1 / corrected in
- * Verify details). `statedFallback` is the Step 1 form value, used when the
- * transcript summary is not loaded or has no stated value.
+ * Study duration from Transcript data: the assessor's entry → printed years /
+ * semesters → converted from credits. Null when none of these has a value.
  */
 export function resolveStudyDuration(
   level: DegreeLevel,
   transcriptData: TranscriptDataSummary | null | undefined,
-  statedFallback: number | null | undefined,
 ): StudyDuration {
   const q = transcriptData?.qualifications.find((x) => x.degreeLevel === level);
-  if (q) {
-    const manual = finiteYears(q.overrides.countedYears);
-    if (manual != null) return { years: manual, source: "edited" };
-    const counted = finiteYears(q.transcript.countedYears);
-    if (counted != null) {
-      return { years: counted, source: q.creditConversion ? "credits" : "transcript" };
-    }
-    const stated = finiteYears(q.statedYears);
-    if (stated != null) return { years: stated, source: "stated" };
+  if (!q) return { years: null, source: null };
+  const manual = finiteYears(q.overrides.countedYears);
+  if (manual != null) return { years: manual, source: "edited" };
+  const counted = finiteYears(q.transcript.countedYears);
+  if (counted != null) {
+    return { years: counted, source: q.creditConversion ? "credits" : "transcript" };
   }
-  const fallback = finiteYears(statedFallback);
-  if (fallback != null) return { years: fallback, source: "stated" };
   return { years: null, source: null };
 }
 

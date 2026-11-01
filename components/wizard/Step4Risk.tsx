@@ -786,7 +786,6 @@ export function Step4Risk({
         degreeTitle: string | null;
         institution: string | null;
         country: string | null;
-        durationYears: number | null;
       }
     >
   >;

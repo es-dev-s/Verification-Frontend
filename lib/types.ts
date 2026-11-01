@@ -52,8 +52,6 @@ export type Bachelors = {
   degreeTitle: string | null;
   institution: string | null;
   country: string | null;
-  durationYears: number | null;
-  durationCalculated: boolean;
 };
 
 export type ExperienceRow = {
@@ -198,6 +196,8 @@ export type SubjectMatchRow = {
   method: "exact" | "fuzzy" | "llm" | "none";
   confidence: number;
   reason?: string;
+  /** Matched from the earlier study (lateral entry). */
+  priorStudy?: boolean;
 };
 
 export type MissingSubjectsByTier = {
@@ -270,13 +270,11 @@ export type Gate1Qualification = {
   aqfLevel: number | null;
   engineering: "yes" | "no" | "unclear";
   engineeringReason: string;
-  /** Qualification.durationYears as entered (null when not stated). */
-  statedYears: number | null;
-  /** Counted from printed years / semesters (null when not reliably countable). */
+  /** From Transcript data: the assessor's entry, else printed years / semesters, else credits. */
   countedYears: number | null;
-  /** Duration Gate 1 used (counted, else stated). */
+  /** Duration Gate 1 used (same as countedYears). */
   durationYears: number | null;
-  durationSource: "counted" | "stated" | "none";
+  durationSource: "counted" | "none";
   /** How the count was made (or why it could not be). */
   durationMethod: string;
   /** Flag text when the counted duration was converted from credits (absent on older results). */
@@ -300,9 +298,6 @@ export type Gate1Decision = {
   qualificationUsed: string | null;
   tracks: Gate1Track[];
   qualifications: Gate1Qualification[];
-  /** True when the duration used was the stated one (transcript had no years / semesters). */
-  durationFallback: boolean;
-  fallbackNote: string | null;
   /** Credit-conversion flag of the qualification that decided the gate (absent on older results). */
   creditConversionNote?: string | null;
   /** Engineering decision for the qualification that decided the gate (null when none). */
@@ -362,7 +357,6 @@ export type VocationalAssessmentDetail = {
 export type DurationEvidence = {
   level: SubjectQualification;
   title: string | null;
-  statedYears: number | null;
   countedYears: number | null;
   minimumYears: number | null;
   creditTotal: number | null;
@@ -566,6 +560,8 @@ export type AssessmentResult = {
   routing?: RoutingInfo;
   /** Gate 1 qualification eligibility (decided before any scoring). */
   gate1?: Gate1Decision;
+  /** Lateral-entry check for the bachelor. */
+  lateralEntry?: LateralEntryView | null;
   /** Engineering decision and final-year project (duration is shown by Gate 1). */
   qualificationEvidence?: QualificationEvidence;
   /** Gate project / thesis title of the top occupation. */
@@ -633,6 +629,16 @@ export type FamilyAdjustment = {
 };
 
 /** Occupation an assessor can pick for a manual-review case. */
+/** Assessor check of one ANZSCO (POST /cases/:id/assess/check). Read-only, never saved. */
+export type OccupationCheck = {
+  candidate: AnzscoCandidate;
+  track: NonNullable<AnzscoCandidate["track"]> | null;
+  trackLabel: string | null;
+  /** False when Gate 1 did not open this occupation's track for the case. */
+  trackOpen: boolean;
+  gateResult: "open" | "manual_review" | "not_eligible";
+};
+
 export type ManualOccupationOption = {
   occupationId: string | null;
   anzscoCode: string;
@@ -671,8 +677,6 @@ export type Qualification = {
   degreeTitle: string | null;
   institution: string | null;
   country: string | null;
-  durationYears: number | null;
-  durationCalculated: boolean;
 };
 
 export const UNCERTAIN_THRESHOLD = 0.7;
@@ -682,8 +686,6 @@ export function emptyBachelors(): Bachelors {
     degreeTitle: "",
     institution: "",
     country: "",
-    durationYears: null,
-    durationCalculated: false,
   };
 }
 
@@ -789,7 +791,8 @@ export const AWARD_LEVEL_OPTIONS: Array<{ value: Exclude<AwardLevel, "unknown">;
   { value: "doctorate", label: "Doctorate (AQF 10)" },
 ];
 
-export type DurationCheckStatus = "match" | "mismatch" | "fallback" | "no_stated" | "missing";
+/** Where the study duration came from (Transcript data); "missing" when none. */
+export type DurationCheckStatus = "edited" | "transcript" | "credits" | "missing";
 
 export type TranscriptFinalProject = {
   title: string;
@@ -816,7 +819,6 @@ export type QualificationTranscriptSummary = {
   awardManual: boolean;
   detectedAward: AwardLevel;
   subjectCount: number;
-  statedYears: number | null;
   transcript: {
     countedYears: number | null;
     terms: number | null;
@@ -825,6 +827,8 @@ export type QualificationTranscriptSummary = {
     reliable: boolean;
     method: string;
     rowsWithTerm: number;
+    /** First and last period printed, e.g. semester 3 → 8 (null when not counted from periods). */
+    periodRange?: { unit: "semester" | "trimester" | "quarter" | "year"; first: number; last: number } | null;
     creditTotal: number | null;
     finalProject: TranscriptFinalProject | null;
     engineeringShare: number | null;
@@ -836,16 +840,13 @@ export type QualificationTranscriptSummary = {
     finalProject: TranscriptFinalProject | null;
     engineeringShare: number | null;
   };
-  basis: "counted" | "manual" | "stated" | "none";
+  basis: "counted" | "manual" | "none";
   basisLabel: string;
   /** e.g. "Converted from credits (240 credits ÷ 60 per year)" when the years came from credits. */
   creditConversion?: string | null;
-  fallback: boolean;
   showEngineeringShare: boolean;
   durationCheck: {
     status: DurationCheckStatus;
-    toleranceYears: number;
-    differenceYears: number | null;
     ok: boolean;
     message: string;
   };
@@ -856,10 +857,37 @@ export type TranscriptDataSummary = {
   subjectCount: number;
   subjectsCurrent: boolean;
   source: string | null;
-  toleranceYears: number;
+  /** True when every qualification has a study duration. */
   durationOk: boolean;
   message: string | null;
   qualifications: QualificationTranscriptSummary[];
+  /** Lateral-entry check for the bachelor (null when there is no bachelor). */
+  lateralEntry?: LateralEntryView | null;
+};
+
+/** Lateral-entry check (runs before the ANZSCO gate). */
+export type LateralEntryView = {
+  /** 1 = four years or longer, 2 = standard entry, 3 = lateral entry, 4 = manual review. */
+  route: 1 | 2 | 3 | 4 | null;
+  step: "ask" | "reconfirm" | "upload" | "done";
+  reason: string;
+  flagged: boolean;
+  contradiction: { fired: boolean; reasons: string[] };
+  degreeLevel: "bachelor";
+  durationYears: number | null;
+  durationSource: string;
+  startPeriod: string | null;
+  answer: { value: "yes" | "no"; at: string } | null;
+  confirm: { value: "yes" | "no"; at: string } | null;
+  priorDocuments: Array<{
+    id: string;
+    name: string;
+    format: string;
+    status: string;
+    error: string | null;
+  }>;
+  priorSubjects: string[] | null;
+  events: Array<{ at: string; event: string }>;
 };
 
 /** Field names on FieldSource for the award details (Upload & details). */

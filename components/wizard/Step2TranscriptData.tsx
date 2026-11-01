@@ -11,7 +11,7 @@ import { BTN_PRIMARY, BTN_SECONDARY, CARD, FOCUS_RING, Spinner } from "./UploadT
 import {
   CreditConversionPill,
   DataTile,
-  formatCountedDuration,
+  formatPeriodRange,
   formatCredits,
   formatShare,
   formatYears,
@@ -186,14 +186,20 @@ function QualificationCard({
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           <DataTile
-            label="Counted duration"
-            value={formatCountedDuration(q)}
-            tag={q.overrides.countedYears != null ? "Edited" : null}
-            hint={
-              q.fallback
-                ? `Not counted from the transcript — the stated duration (${formatYears(q.statedYears)}) is used.`
-                : q.basisLabel
+            label="Study duration"
+            value={
+              q.effective.countedYears == null ? (
+                "Not available"
+              ) : (
+                <>
+                  {formatYears(q.effective.countedYears)}
+                  {formatPeriodRange(q) ? (
+                    <span className="font-normal text-ink-muted"> · {formatPeriodRange(q)}</span>
+                  ) : null}
+                </>
+              )
             }
+            tag={q.overrides.countedYears != null ? "Edited" : null}
           />
           <DataTile
             label="Total credits"
@@ -304,7 +310,7 @@ function OverrideForm({
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">Counted duration (years)</span>
+          <span className="mb-1.5 block text-sm font-medium text-ink">Study duration (years)</span>
           <input className={INPUT} inputMode="decimal" value={years} onChange={(e) => setYears(e.target.value)} />
           {fromTranscript(formatYears(q.transcript.countedYears))}
         </label>
