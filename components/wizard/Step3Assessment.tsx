@@ -50,6 +50,21 @@ function coverageLabel(matched: number, expected: number, pct: number): string {
   return `${matched} / ${expected} — ${rounded}%`;
 }
 
+function suggestionBadge(c: AnzscoCandidate): { label: string; className: string } | null {
+  switch (c.suggestionStatus) {
+    case "recommended":
+      return { label: "Recommended", className: "bg-success-soft text-success" };
+    case "eligible":
+      return { label: "Eligible", className: "bg-surface-tint text-ink" };
+    case "rejected":
+      return { label: "Rejected", className: "bg-[var(--warning-soft)] text-[var(--warning-ink)]" };
+    case "review":
+      return { label: "Review", className: "bg-[var(--warning-soft)] text-[var(--warning-ink)]" };
+    default:
+      return null;
+  }
+}
+
 function methodBadge(method: SubjectMatchRow["method"]): {
   label: string;
   className: string;
@@ -136,7 +151,12 @@ function CandidateMetrics({
   compact?: boolean;
   className: string;
 }) {
-  const rows: Array<[string, string]> = c.vocational
+  const rows: Array<[string, string]> = c.suggestionStatus
+    ? [
+        ["Foundational", coverageLabel(c.foundationalMatched, c.foundationalExpected, c.foundationalPct)],
+        ["Core units", coverageLabel(c.coreMatched, c.coreExpected, c.corePct)],
+      ]
+    : c.vocational
     ? [
         [
           "Core units",
@@ -569,10 +589,11 @@ function CheckResultCard({
           <div className="flex flex-wrap items-center gap-1.5">
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                c.recommended ? "bg-success-soft text-success" : "bg-surface-tint text-ink-muted"
+                suggestionBadge(c)?.className ??
+                (c.recommended ? "bg-success-soft text-success" : "bg-surface-tint text-ink-muted")
               }`}
             >
-              {c.recommended ? "Would be recommended" : "Not recommended"}
+              {suggestionBadge(c)?.label ?? (c.recommended ? "Would be recommended" : "Not recommended")}
             </span>
             {conf ? (
               <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${conf.className}`}>
@@ -1023,9 +1044,15 @@ export function Step3Assessment({
       ? family.maybeSuitable.anzscoCode
       : null;
     const order = new Map((family?.occupations ?? []).map((o, i) => [o.anzscoCode, i]));
+    const listed = new Map(candidates.map((c, i) => [c.anzscoCode, i]));
     return candidates
       .filter((c) => c.anzscoCode !== primaryCandidate.anzscoCode && c.anzscoCode !== etCode)
-      .sort((a, b) => (order.get(a.anzscoCode) ?? 99) - (order.get(b.anzscoCode) ?? 99));
+      .sort((a, b) => {
+        if (a.suggestionStatus && b.suggestionStatus) {
+          return (listed.get(a.anzscoCode) ?? 99) - (listed.get(b.anzscoCode) ?? 99);
+        }
+        return (order.get(a.anzscoCode) ?? 99) - (order.get(b.anzscoCode) ?? 99);
+      });
   }, [family, candidates, primaryCandidate]);
 
   // Top matches grid layout (UI only). Primary in column 1; alternatives and
@@ -1199,7 +1226,8 @@ export function Step3Assessment({
 
       {assessment && !loading ? (
         <div className="space-y-4">
-          {onCheckOccupation ? (
+          {onCheckOccupation &&
+          !(assessment.gate1?.result === "manual_review" && onRunManualOccupation) ? (
             <AnzscoCheck
               onCheck={onCheckOccupation}
               onShowPriorStudy={
@@ -1339,12 +1367,14 @@ export function Step3Assessment({
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span
                           className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                            c.recommended
+                            suggestionBadge(c)?.className ??
+                            (c.recommended
                               ? "bg-success-soft text-success"
-                              : "bg-surface-tint text-ink-muted"
+                              : "bg-surface-tint text-ink-muted")
                           }`}
                         >
-                          {c.recommended ? "Recommended" : "Best coverage · not recommended"}
+                          {suggestionBadge(c)?.label ??
+                            (c.recommended ? "Recommended" : "Best coverage · not recommended")}
                         </span>
                         {assessment.assessorSelected ? (
                           <span className="rounded-full bg-surface-tint px-2 py-0.5 text-[10px] font-medium text-ink-muted">
@@ -1408,6 +1438,13 @@ export function Step3Assessment({
                           <p className="mt-0.5 line-clamp-2 break-words text-[13px] font-medium leading-snug text-ink">
                             {c.title}
                           </p>
+                          {suggestionBadge(c) ? (
+                            <span
+                              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${suggestionBadge(c)!.className}`}
+                            >
+                              {suggestionBadge(c)!.label}
+                            </span>
+                          ) : null}
                         </div>
                         <p className="shrink-0 font-mono text-[13px] font-semibold tabular-nums text-ink">
                           {formatAdjustedPct(shown)}
@@ -1500,7 +1537,13 @@ export function Step3Assessment({
                       ? `${formatConfidencePct(selectedScore)}${
                           selectedConfidence
                             ? ` · ${selectedConfidence.label}`
-                            : " · Not recommended"
+                            : selected?.suggestionStatus === "eligible"
+                              ? " · Eligible"
+                              : selected?.suggestionStatus === "rejected"
+                                ? " · Rejected"
+                                : selected?.suggestionStatus === "review"
+                                  ? " · Review"
+                                  : " · Not recommended"
                         }`
                       : selectedConfidence
                         ? selectedConfidence.label

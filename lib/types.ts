@@ -406,6 +406,11 @@ export type AnzscoCandidate = {
   confidenceScore?: number;
   determination?: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
   recommended?: boolean;
+  /**
+   * Telecommunications group label. Set only for 313212 / 313213 / 313214
+   * when the qualification is ICT60220 and Engineering Associate is open.
+   */
+  suggestionStatus?: "recommended" | "eligible" | "rejected" | "review";
   workExperienceBoost?: boolean;
   workExperienceAnalysis?: WorkExperienceCandidateAnalysis | null;
   matches: SubjectMatchRow[];

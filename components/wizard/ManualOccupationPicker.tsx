@@ -201,34 +201,42 @@ export function ManualOccupationPicker({
         Gate 1 needs manual review. Pick the ANZSCO occupation to match the saved subjects
         against.
       </p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-end">
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">ANZSCO code</span>
-          <input
-            className={`${INPUT} font-mono tabular-nums`}
-            inputMode="numeric"
-            placeholder="e.g. 233512"
-            value={code}
-            onChange={(e) => onCodeChange(e.target.value)}
-          />
-        </label>
-        <div className="relative">
+      <div className="mt-3 flex min-w-0 items-end gap-2">
+        <div className="relative min-w-0 flex-1">
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-ink">Occupation</span>
+            <span className="mb-1.5 block text-sm font-medium text-ink">ANZSCO</span>
             <input
               className={INPUT}
               role="combobox"
+              aria-label="ANZSCO code or occupation"
               aria-expanded={open}
               aria-controls={listId}
-              placeholder={options ? "Search occupations" : "Loading occupations…"}
+              placeholder={options ? "Search ANZSCO code or occupation" : "Loading occupations…"}
               value={query}
               disabled={!options}
               onFocus={() => setOpen(true)}
               onBlur={() => setOpen(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !busy) {
+                  const usable = filtered.filter((o) => o.available && o.occupationId);
+                  const target = picked ?? (usable.length === 1 ? usable[0]! : null);
+                  if (target?.occupationId) {
+                    if (!picked) choose(target);
+                    onRun(target.occupationId);
+                  }
+                }
+                if (e.key === "Escape") setOpen(false);
+              }}
               onChange={(e) => {
-                setQuery(e.target.value);
-                setPickedId(null);
-                setCode("");
+                const value = e.target.value;
+                const digits = value.replace(/[^\d]/g, "");
+                if (digits.length === 6 && digits === value.replace(/\s+/g, "")) {
+                  onCodeChange(digits);
+                } else {
+                  setQuery(value);
+                  setPickedId(null);
+                  setCode("");
+                }
                 setOpen(true);
               }}
             />
