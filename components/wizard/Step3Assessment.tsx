@@ -168,7 +168,9 @@ function CandidateMetrics({
     : [
         ["Tier 1", coverageLabel(c.foundationalMatched, c.foundationalExpected, c.foundationalPct)],
         ["Tier 2", coverageLabel(c.coreMatched, c.coreExpected, c.corePct)],
-        ["Capstone", c.tier3GateMet ? "Capstone found" : "Capstone not found"],
+        ...(c.track === "engineering_associate"
+          ? []
+          : [["Capstone", c.tier3GateMet ? "Capstone found" : "Capstone not found"] as [string, string]]),
       ];
   const shown = compact ? rows.slice(0, 2) : rows;
   return (

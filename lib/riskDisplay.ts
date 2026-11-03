@@ -114,6 +114,8 @@ export type AssessmentSummary = {
   coreExpected: number;
   corePct: number;
   tier3GateMet: boolean;
+  /** Engineering Associate does not use the capstone gate. */
+  track?: AnzscoCandidate["track"];
   recommended: boolean | null;
   workExperienceBoost: boolean | null;
   workExperienceAnalysis: string | null;
@@ -151,6 +153,7 @@ export function resolveAssessmentSummary(
       coreExpected: candidate.coreExpected,
       corePct: candidate.corePct,
       tier3GateMet: candidate.tier3GateMet,
+      track: candidate.track,
       recommended:
         typeof candidate.recommended === "boolean" ? candidate.recommended : null,
       workExperienceBoost:

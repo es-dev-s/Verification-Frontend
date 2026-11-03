@@ -455,10 +455,12 @@ export function Step5FinalReview({
               </div>
               <dl className="mt-3 grid gap-3 border-t border-line pt-3 sm:grid-cols-3">
                 <DetailItem label="Recommended" value={yesNo(summary.recommended)} />
-                <DetailItem
-                  label="Capstone gate (Tier 3)"
-                  value={summary.tier3GateMet ? "Met" : "Not met"}
-                />
+                {summary.track === "engineering_associate" ? null : (
+                  <DetailItem
+                    label="Capstone gate (Tier 3)"
+                    value={summary.tier3GateMet ? "Met" : "Not met"}
+                  />
+                )}
                 <DetailItem
                   label="Work experience boost"
                   value={yesNo(summary.workExperienceBoost)}
