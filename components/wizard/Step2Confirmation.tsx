@@ -403,7 +403,8 @@ function CorrectionForm({
   onSave: (c: DurationCorrection) => Promise<void>;
 }) {
   const text = (n: number | null) => (n == null ? "" : String(Math.round(n * 100) / 100));
-  const [counted, setCounted] = useState(text(q.effective.countedYears));
+  // A default duration is not an entry: start empty so saving keeps it a default.
+  const [counted, setCounted] = useState(q.basis === "default" ? "" : text(q.effective.countedYears));
   const [award, setAward] = useState<string>(q.awardManual ? q.award : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

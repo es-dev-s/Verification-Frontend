@@ -208,6 +208,7 @@ function QualificationCard({
               ) : (
                 <>
                   {formatYears(q.effective.countedYears)}
+                  {q.basis === "default" ? " (default)" : null}
                   {formatPeriodRange(q) ? (
                     <span className="font-normal text-ink-muted"> · {formatPeriodRange(q)}</span>
                   ) : null}
@@ -265,7 +266,8 @@ function OverrideForm({
   onCancel: () => void;
   onSave: (patch: OverridePatch) => Promise<void>;
 }) {
-  const [years, setYears] = useState(toText(q.effective.countedYears));
+  // A default duration is not an entry: start empty so saving keeps it a default.
+  const [years, setYears] = useState(q.basis === "default" ? "" : toText(q.effective.countedYears));
   const [credits, setCredits] = useState(toText(q.effective.creditTotal));
   const [project, setProject] = useState(q.effective.finalProject?.title ?? "");
   const [share, setShare] = useState(

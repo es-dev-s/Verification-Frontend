@@ -123,7 +123,7 @@ export function buildConfirmationQualifications(
   });
 }
 
-export type StudyDurationSource = "edited" | "transcript" | "credits";
+export type StudyDurationSource = "edited" | "transcript" | "credits" | "default";
 
 export type StudyDuration = {
   /** Years, or null when Transcript data has none. */
@@ -135,6 +135,7 @@ export const STUDY_DURATION_SOURCE_LABELS: Record<StudyDurationSource, string> =
   edited: "edited by assessor",
   transcript: "from transcript",
   credits: "converted from credits",
+  default: "default",
 };
 
 function finiteYears(n: number | null | undefined): number | null {
@@ -157,6 +158,9 @@ export function resolveStudyDuration(
   if (counted != null) {
     return { years: counted, source: q.creditConversion ? "credits" : "transcript" };
   }
+  // Advanced Diploma with no duration found: the default Gate 1 uses.
+  const fallback = q.basis === "default" ? finiteYears(q.effective.countedYears) : null;
+  if (fallback != null) return { years: fallback, source: "default" };
   return { years: null, source: null };
 }
 

@@ -122,7 +122,9 @@ export function Gate1Box({ gate }: { gate: Gate1Decision }) {
                 <td className="py-0.5 pr-3" title={q.engineeringReason}>
                   {ENGINEERING_LABEL[q.engineering]}
                 </td>
-                <td className="py-0.5 pr-3 tabular-nums">{years(q.countedYears)}</td>
+                <td className="py-0.5 pr-3 tabular-nums">
+                  {q.durationSource === "default" ? `${years(q.durationYears)} (default)` : years(q.countedYears)}
+                </td>
                 <td className="py-0.5">
                   {outcomeLabel(q.outcome)}
                   {q.flags.length ? (

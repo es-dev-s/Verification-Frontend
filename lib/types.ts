@@ -274,7 +274,7 @@ export type Gate1Qualification = {
   countedYears: number | null;
   /** Duration Gate 1 used (same as countedYears). */
   durationYears: number | null;
-  durationSource: "counted" | "none";
+  durationSource: "counted" | "none" | "default";
   /** How the count was made (or why it could not be). */
   durationMethod: string;
   /** Flag text when the counted duration was converted from credits (absent on older results). */
@@ -841,7 +841,7 @@ export const AWARD_LEVEL_OPTIONS: Array<{ value: Exclude<AwardLevel, "unknown">;
 ];
 
 /** Where the study duration came from (Transcript data); "missing" when none. */
-export type DurationCheckStatus = "edited" | "transcript" | "credits" | "missing";
+export type DurationCheckStatus = "edited" | "transcript" | "credits" | "default" | "missing";
 
 export type TranscriptFinalProject = {
   title: string;
@@ -889,7 +889,7 @@ export type QualificationTranscriptSummary = {
     finalProject: TranscriptFinalProject | null;
     engineeringShare: number | null;
   };
-  basis: "counted" | "manual" | "none";
+  basis: "counted" | "manual" | "none" | "default";
   basisLabel: string;
   /** e.g. "Converted from credits (240 credits ÷ 60 per year)" when the years came from credits. */
   creditConversion?: string | null;

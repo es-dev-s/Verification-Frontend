@@ -55,6 +55,7 @@ const STATUS_LABEL: Record<DurationCheckStatus, string> = {
   edited: "Edited by assessor",
   transcript: "From transcript",
   credits: "Converted from credits",
+  default: "Default",
   missing: "Not available",
 };
 
@@ -64,6 +65,7 @@ const STATUS_CLASS: Record<DurationCheckStatus, string> = {
   edited: NEUTRAL_PILL,
   transcript: "bg-success-soft text-success",
   credits: NEUTRAL_PILL,
+  default: NEUTRAL_PILL,
   missing: "bg-[#fff7ed] text-[#b45309] ring-1 ring-[#fdba74]/60",
 };
 
