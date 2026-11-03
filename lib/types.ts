@@ -494,6 +494,19 @@ export type PrecedentCheck = {
   cases: PrecedentCaseRow[];
 };
 
+export type RiskComponentSplit = {
+  method: "rubric" | "derived" | "plain";
+  pct: number;
+  majorMatched: number;
+  majorTotal: number;
+  majorPct: number;
+  supportingMatched: number;
+  supportingTotal: number;
+  supportingPct: number | null;
+  missingMajor: string[];
+  missingSupporting: string[];
+};
+
 export type RiskAssessmentResult = {
   anzscoCode: string;
   title: string;
@@ -506,6 +519,15 @@ export type RiskAssessmentResult = {
     negative: number;
     banned: number;
     positivePct: number;
+    /** Historical component score (similarity-weighted); absent on older results. */
+    scorePct?: number;
+    similar?: {
+      cases: number;
+      positive: number;
+      negative: number;
+      weightedPositivePct: number | null;
+      method: string;
+    };
   };
   precedent: PrecedentCheck;
   workExperienceBoost: boolean;
@@ -525,12 +547,19 @@ export type RiskAssessmentResult = {
   reducingRisk: string[];
   increasingRisk: string[];
   missingMajorDomains: string;
+  /** 70% Major / 30% Supporting detail behind Fundamental and Core (academic). */
+  componentSplits?: { fundamental: RiskComponentSplit; core: RiskComponentSplit };
   competence: Competence;
   competenceSource: "ai" | "manual";
   insight: string;
 };
 
 export type AssessmentResult = {
+  /** Subject-read record; partial = some transcript pages could not be read. */
+  extraction?: {
+    source?: string;
+    partial?: { failedChunks: number; pages: number[]; reasons: string[] };
+  };
   anzscoCode: string | null;
   title: string | null;
   recommended: boolean;
@@ -582,6 +611,8 @@ export type AssessmentResult = {
   assessorSelected?: { anzscoCode: string; title: string; occupationId: string };
   /** Family rules on the suggested ANZSCOs (primary, alternatives, ET Maybe Suitable). */
   familyAdjustment?: FamilyAdjustment;
+  /** Civil specialisation check (Structural / Geotechnical / Transport, doc 12). */
+  specialisation?: SpecialisationResult | null;
 };
 
 /** One occupation after the family rules (Step 4 ANZSCO cards). */
@@ -619,6 +650,19 @@ export type MaybeSuitableEntry = {
   capped: boolean;
   /** True when ET was one of the suggested candidates (detail view available). */
   inCandidates: boolean;
+  /** ET's own Tier 1 / Tier 2 / Tier 3 detail (sheet parts A / B / C) when it was scored. */
+  tiers?: EtTierDetail;
+};
+
+export type EtTierDetail = {
+  tiers: Array<{
+    tier: "tier1" | "tier2" | "tier3";
+    label: string;
+    matched: number;
+    expected: number | null;
+    rows: Array<{ name: string; matched: boolean; optional: boolean }>;
+  }>;
+  gateMet: boolean;
 };
 
 /** Family rules applied to the suggested ANZSCOs (confidence = matching %). */
@@ -865,6 +909,8 @@ export type TranscriptDataSummary = {
   /** True when every qualification has a study duration. */
   durationOk: boolean;
   message: string | null;
+  /** One line when some transcript pages could not be read (Retry re-reads). */
+  readWarning?: string | null;
   qualifications: QualificationTranscriptSummary[];
   /** Lateral-entry check for the bachelor (null when there is no bachelor). */
   lateralEntry?: LateralEntryView | null;
@@ -903,3 +949,67 @@ export function awardOptionLabel(level: AwardLevel | null | undefined): string {
   if (!level || level === "unknown") return "Not identified";
   return AWARD_LEVEL_OPTIONS.find((o) => o.value === level)?.label ?? level;
 }
+
+export type SpecialisationTier = "no_risk" | "slight_risk" | "high_risk";
+export type SpecialisationHit = { item: string; evidence: string; confidence: number };
+export type SpecialisationCoverage = {
+  matched: SpecialisationHit[];
+  missing: string[];
+  coveragePct: number;
+};
+export type SpecialisationOutcome = {
+  anzscoCode: string;
+  title: string;
+  base: SpecialisationCoverage & { level: "full" | "partial" | "little" };
+  pathwayA: {
+    available: boolean;
+    degreeTitle: string | null;
+    titleFit: "specific" | "generic" | "unrelated" | "none";
+    subjectsCounted: number;
+    matched: SpecialisationHit[];
+    unmatched: string[];
+    coursePct: number | null;
+    relevancePct: number;
+    satisfied: boolean;
+    tier: SpecialisationTier;
+    notes: string[];
+  };
+  pathwayB: {
+    available: boolean;
+    fteYears: number;
+    totalYears: number;
+    relevancePct: number;
+    competencyPct: number;
+    roles: Array<{
+      title: string;
+      start: string | null;
+      end: string | null;
+      months: number;
+      fte: number;
+      specialistTitle: boolean;
+      competencies: string[];
+      relevance: number;
+      counted: boolean;
+    }>;
+    competenciesMatched: SpecialisationHit[];
+    competenciesMissing: string[];
+    referenceLetters: "not_in_system";
+    timelineConsistent: boolean;
+    satisfied: boolean;
+    tier: SpecialisationTier;
+    notes: string[];
+  };
+  chosen: "A" | "B" | null;
+  academicTier: SpecialisationTier;
+  score: number;
+  tier: SpecialisationTier;
+  gaps: string[];
+  routing: string;
+};
+export type SpecialisationResult = {
+  version: string;
+  computedAt: string;
+  civilCore: SpecialisationCoverage & { met: boolean };
+  specialisations: SpecialisationOutcome[];
+  audit: Array<{ step: string; detail: string }>;
+};

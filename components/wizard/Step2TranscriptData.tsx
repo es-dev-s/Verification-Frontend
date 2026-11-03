@@ -81,7 +81,7 @@ export function Step2TranscriptData({
         </section>
       ) : data ? (
         <>
-          <StatusLine data={data} />
+          <StatusLine data={data} onRetry={onReRead} />
           {data.qualifications.length ? (
             data.qualifications.map((q) => (
               <QualificationCard
@@ -121,7 +121,7 @@ export function Step2TranscriptData({
   );
 }
 
-function StatusLine({ data }: { data: TranscriptDataSummary }) {
+function StatusLine({ data, onRetry }: { data: TranscriptDataSummary; onRetry: () => void }) {
   const parts = [
     `${data.transcriptCount} transcript${data.transcriptCount === 1 ? "" : "s"}`,
     `${data.subjectCount} subject${data.subjectCount === 1 ? "" : "s"} read`,
@@ -132,6 +132,21 @@ function StatusLine({ data }: { data: TranscriptDataSummary }) {
       {data.message ? (
         <p className="mt-2 inline-flex rounded-lg bg-[#fff7ed] px-3 py-1.5 text-sm text-[#b45309] ring-1 ring-[#fdba74]/60">
           {data.message}
+        </p>
+      ) : null}
+      {data.readWarning ? (
+        <p
+          role="status"
+          className="mt-2 flex w-fit items-center gap-3 rounded-xl bg-[#fff7ed] px-3 py-1.5 text-sm text-[#b45309] ring-1 ring-[#fdba74]/60"
+        >
+          {data.readWarning}
+          <button
+            type="button"
+            onClick={onRetry}
+            className={`rounded-full font-medium underline underline-offset-2 hover:text-[#92400e] ${FOCUS_RING}`}
+          >
+            Retry
+          </button>
         </p>
       ) : null}
     </div>

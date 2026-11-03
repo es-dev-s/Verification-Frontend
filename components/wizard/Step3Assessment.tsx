@@ -5,6 +5,7 @@ import type {
   AnzscoCandidate,
   AssessmentResult,
   CoreBand,
+  EtTierDetail,
   OccupationCheck,
   RubricSubjectCatalogEntry,
   SubjectMatchRow,
@@ -12,6 +13,7 @@ import type {
   VocationalUnitMatch,
 } from "@/lib/types";
 import { gateBlocksScoring } from "@/lib/types";
+import { SpecialisationCard } from "./SpecialisationCard";
 import { FOCUS_RING } from "./UploadTile";
 import { Gate1Box } from "./Gate1Box";
 import { LateralEntryLine } from "./LateralEntryCard";
@@ -1250,6 +1252,14 @@ export function Step3Assessment({
                 {(assessment.extractedSubjects ?? []).length} subjects
               </p>
             </div>
+            {assessment.extraction?.partial ? (
+              <p
+                role="status"
+                className="mb-3 w-fit rounded-xl bg-[#fff7ed] px-3 py-1.5 text-xs text-[#b45309] ring-1 ring-[#fdba74]/60"
+              >
+                Some pages couldn&apos;t be read. Retry the read in Transcript data.
+              </p>
+            ) : null}
             {(assessment.extractedSubjects ?? []).length ? (
               <ul className="grid max-h-64 gap-1.5 overflow-y-auto overscroll-contain sm:grid-cols-2 [scrollbar-gutter:stable]">
                 {(assessment.extractedSubjects ?? []).map((s, i) => (
@@ -1473,7 +1483,8 @@ export function Step3Assessment({
                   : null;
                 const active = etCandidate && selected?.anzscoCode === etCandidate.anzscoCode;
                 // Wide card (cols 2-3): title + code left, pill + confidence right.
-                const body = (
+                const tierLine = et.tiers ? etTierLine(et.tiers) : null;
+                const head = (
                   <div className="flex w-full items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-mono text-[10px] tabular-nums text-ink-muted">
@@ -1492,6 +1503,19 @@ export function Step3Assessment({
                       </p>
                     </div>
                   </div>
+                );
+                const body = tierLine ? (
+                  <div className="w-full min-w-0">
+                    {head}
+                    <p
+                      className="mt-1.5 truncate text-xs tabular-nums text-ink-muted"
+                      title={tierLine.detail}
+                    >
+                      {tierLine.summary}
+                    </p>
+                  </div>
+                ) : (
+                  head
                 );
                 const cls = `flex min-w-0 items-center rounded-xl border px-3 py-2.5 text-left transition ${
                   secondaryCount >= 2 ? "md:col-span-2 lg:col-start-2" : ""
@@ -1516,6 +1540,10 @@ export function Step3Assessment({
             </div>
 
           </section>
+          ) : null}
+
+          {assessment.specialisation && !gateBlocked ? (
+            <SpecialisationCard result={assessment.specialisation} />
           ) : null}
 
           {selected && !gateBlocked ? (
@@ -1941,4 +1969,18 @@ export function Step3Assessment({
       </div>
     </div>
   );
+}
+
+/** One-line Tier 1 / Tier 2 / project summary for the ET (Maybe Suitable) card. */
+function etTierLine(d: EtTierDetail): { summary: string; detail: string } {
+  const parts: string[] = [];
+  const detail: string[] = [];
+  for (const t of d.tiers) {
+    const name = t.tier === "tier1" ? "Tier 1" : t.tier === "tier2" ? "Tier 2" : "Project";
+    if (t.tier === "tier3") parts.push(`${name} ${d.gateMet ? "found" : "missing"}`);
+    else parts.push(`${name} ${t.matched}/${t.expected ?? t.rows.length}`);
+    const hit = t.rows.filter((r) => r.matched).map((r) => r.name);
+    detail.push(`${name} – ${t.label}: ${hit.length ? hit.join(", ") : "none matched"}`);
+  }
+  return { summary: parts.join(" · "), detail: detail.join("\n") };
 }

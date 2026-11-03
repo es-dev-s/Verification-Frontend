@@ -585,6 +585,8 @@ function ComponentTile({
   legacy: boolean;
 }) {
   const hist = risk.historical;
+  const split =
+    c.key === "fundamental" ? risk.componentSplits?.fundamental : c.key === "core" ? risk.componentSplits?.core : undefined;
   const weight =
     !c.used
       ? "Not used"
@@ -615,6 +617,17 @@ function ComponentTile({
           </span>
         ) : null}
       </div>
+      {split && split.method !== "plain" && split.supportingPct != null ? (
+        <p className="mt-1.5 text-xs leading-snug text-ink-muted tabular-nums">
+          Major {formatPct(split.majorPct)} · Supporting {formatPct(split.supportingPct)}
+        </p>
+      ) : null}
+      {c.key === "historical" && hist.similar && hist.similar.cases > 0 ? (
+        <p className="mt-1.5 text-xs leading-snug text-ink-muted tabular-nums" title={hist.similar.method}>
+          {hist.similar.cases} similar past {hist.similar.cases === 1 ? "case" : "cases"} ·{" "}
+          {hist.similar.positive} positive
+        </p>
+      ) : null}
       {!c.used && c.reason ? (
         <p className="mt-1.5 text-[11px] leading-snug text-ink-muted">{c.reason}</p>
       ) : null}
