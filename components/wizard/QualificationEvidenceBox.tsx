@@ -1,4 +1,4 @@
-import type { QualificationEvidence } from "@/lib/types";
+import type { LateralEntryView, QualificationEvidence } from "@/lib/types";
 
 const ENGINEERING_PILL = {
   yes: { label: "Yes", className: "bg-success-soft text-success" },
@@ -8,10 +8,27 @@ const ENGINEERING_PILL = {
 
 const PILL = "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium";
 
+/** Lateral-entry status after Verify details (routes 2–4 only; route 1 shows nothing). */
+const LATERAL_STATUS: Record<2 | 3 | 4, { label: string; className: string }> = {
+  3: { label: "Confirmed", className: "bg-brand/15 text-[#8a4f12]" },
+  2: { label: "Not lateral entry", className: "bg-surface-tint text-ink ring-1 ring-line" },
+  4: { label: "Manual review", className: "bg-[var(--warning-soft)] text-[var(--warning-ink)]" },
+};
+
 /** Step 4 box: engineering decision and final-year project (duration is shown in the Gate 1 box). */
-export function QualificationEvidenceBox({ evidence }: { evidence: QualificationEvidence }) {
+export function QualificationEvidenceBox({
+  evidence,
+  lateralEntry,
+}: {
+  evidence: QualificationEvidence;
+  lateralEntry?: LateralEntryView | null;
+}) {
   const { engineering, finalProject } = evidence;
   const eng = ENGINEERING_PILL[engineering.decision];
+  const route = lateralEntry?.route;
+  const lateral = route === 2 || route === 3 || route === 4 ? LATERAL_STATUS[route] : null;
+  // Only a warning (manual review / contradiction) keeps its short reason; the routine sentence is dropped.
+  const lateralNote = lateral && (route === 4 || lateralEntry?.flagged) ? lateralEntry?.reason : null;
   return (
     <section
       aria-label="Qualification evidence"
@@ -26,6 +43,17 @@ export function QualificationEvidenceBox({ evidence }: { evidence: Qualification
           <span className={`${PILL} ${eng.className}`}>{eng.label}</span>
           <p className="mt-1.5 text-[12px] leading-snug text-ink-muted">{engineering.reason}</p>
         </dd>
+        {lateral ? (
+          <>
+            <dt className="text-[12px] font-medium text-ink-faint sm:pt-0.5">Lateral entry</dt>
+            <dd className="min-w-0">
+              <span className={`${PILL} font-semibold ${lateral.className}`}>{lateral.label}</span>
+              {lateralNote ? (
+                <p className="mt-1.5 text-[12px] leading-snug text-[var(--warning-ink)]">{lateralNote}</p>
+              ) : null}
+            </dd>
+          </>
+        ) : null}
         {finalProject?.title ? (
           <>
             <dt className="text-[12px] font-medium text-ink-faint sm:pt-0.5">Final-year project</dt>

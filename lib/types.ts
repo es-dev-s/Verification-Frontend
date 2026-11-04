@@ -692,7 +692,7 @@ export type ManualOccupationOption = {
   occupationId: string | null;
   anzscoCode: string;
   title: string;
-  flow: "academic" | "vocational_units" | null;
+  flow: "academic" | "vocational_units" | "telecom_group" | null;
   available: boolean;
   unavailableReason: string | null;
 };

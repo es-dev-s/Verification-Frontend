@@ -98,7 +98,8 @@ export function Gate1Box({ gate }: { gate: Gate1Decision }) {
       </div>
 
       {gate.qualifications.length ? (
-        <table className="mt-5 w-full text-left text-[12px] leading-snug">
+        <div className="mt-5 overflow-x-auto rounded-xl bg-brand/10 px-4 py-3">
+        <table className="w-full text-left text-[12px] leading-snug">
           <thead className="text-ink-faint">
             <tr>
               <th className="py-0.5 pr-3 font-medium">Qualification</th>
@@ -135,6 +136,7 @@ export function Gate1Box({ gate }: { gate: Gate1Decision }) {
             ))}
           </tbody>
         </table>
+        </div>
       ) : null}
     </section>
   );

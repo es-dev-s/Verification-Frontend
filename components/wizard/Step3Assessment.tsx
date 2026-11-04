@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AnzscoCandidate,
   AssessmentResult,
@@ -652,7 +652,7 @@ function CheckResultCard({
   );
 }
 
-/** Always-on assessor check: score any ANZSCO on the saved subjects (nothing is saved). */
+/** Always-on assessor check: score any ANZSCO on the saved subjects (nothing is saved). Opens in a popup. */
 function AnzscoCheck({
   onCheck,
   onShowPriorStudy,
@@ -664,6 +664,28 @@ function AnzscoCheck({
   const [result, setResult] = useState<OccupationCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  function close() {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    dialogRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Let the picker close its own suggestion list first.
+      if ((e.target as HTMLElement | null)?.getAttribute?.("aria-expanded") === "true") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   async function run(occupationId: string) {
     setBusy(true);
@@ -685,30 +707,75 @@ function AnzscoCheck({
   }
 
   return (
-    <section
-      aria-label="Check an ANZSCO"
-      className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
-    >
-      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-4">
-        <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-          Check an ANZSCO
-        </p>
-        <ManualOccupationPicker
-          key={pickerKey}
-          compact
-          current={null}
-          busy={busy}
-          actionLabel="Check"
-          onRun={(id) => void run(id)}
-        />
-      </div>
-      {error ? (
-        <p className="mt-3 text-sm leading-snug text-[var(--warning-ink)]">{error}</p>
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-1.5 text-xs font-medium text-ink transition hover:border-brand-muted hover:bg-brand-soft/50 ${FOCUS_RING}`}
+      >
+        Check an ANZSCO
+      </button>
+      {open ? (
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-[rgba(36,31,42,0.45)] p-4"
+          onClick={close}
+        >
+          <div className="flex min-h-full items-start justify-center pt-[8vh]">
+            <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="anzsco-check-title"
+              tabIndex={-1}
+              className="w-full max-w-2xl rounded-2xl border border-line bg-surface shadow-xl outline-none"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+                <h3 id="anzsco-check-title" className="text-base font-semibold text-ink">
+                  Check an ANZSCO
+                </h3>
+                <button
+                  type="button"
+                  onClick={close}
+                  className={`shrink-0 rounded-full border border-line px-3 py-1 text-xs font-medium text-ink-muted hover:bg-surface-tint ${FOCUS_RING}`}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="px-5 py-4">
+                <ManualOccupationPicker
+                  key={pickerKey}
+                  compact
+                  current={null}
+                  busy={busy}
+                  actionLabel="Check"
+                  onRun={(id) => void run(id)}
+                />
+                {error ? (
+                  <p className="mt-3 text-sm leading-snug text-[var(--warning-ink)]">{error}</p>
+                ) : null}
+                {result ? (
+                  <CheckResultCard
+                    check={result}
+                    onClose={clear}
+                    onShowPriorStudy={
+                      onShowPriorStudy
+                        ? () => {
+                            setOpen(false);
+                            onShowPriorStudy();
+                          }
+                        : undefined
+                    }
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
       ) : null}
-      {result ? (
-        <CheckResultCard check={result} onClose={clear} onShowPriorStudy={onShowPriorStudy} />
-      ) : null}
-    </section>
+    </>
   );
 }
 
@@ -1104,6 +1171,18 @@ export function Step3Assessment({
   }, [candidates, primaryCandidate]);
 
   const gateBlocked = isGateBlocked(assessment);
+  // "Check an ANZSCO" button + popup: sits on the Top matches header (or alone at the top when that is hidden).
+  const anzscoCheck =
+    assessment &&
+    onCheckOccupation &&
+    !(assessment.gate1?.result === "manual_review" && onRunManualOccupation) ? (
+      <AnzscoCheck
+        onCheck={onCheckOccupation}
+        onShowPriorStudy={
+          assessment.lateralEntry?.priorSubjects?.length ? showPriorStudy : undefined
+        }
+      />
+    ) : null;
   const selected =
     candidates.find((c) => c.anzscoCode === viewingCode) ??
     primaryCandidate ??
@@ -1230,14 +1309,8 @@ export function Step3Assessment({
 
       {assessment && !loading ? (
         <div className="space-y-4">
-          {onCheckOccupation &&
-          !(assessment.gate1?.result === "manual_review" && onRunManualOccupation) ? (
-            <AnzscoCheck
-              onCheck={onCheckOccupation}
-              onShowPriorStudy={
-                assessment.lateralEntry?.priorSubjects?.length ? showPriorStudy : undefined
-              }
-            />
+          {anzscoCheck && (gateBlocked || !primaryCandidate) ? (
+            <div className="flex justify-end">{anzscoCheck}</div>
           ) : null}
 
           <section
@@ -1303,7 +1376,9 @@ export function Step3Assessment({
 
           {assessment.gate1 ? <Gate1Box gate={assessment.gate1} /> : null}
 
-          <LateralEntryLine view={assessment.lateralEntry} />
+          {!(assessment.qualificationEvidence && !gateBlocked) ? (
+            <LateralEntryLine view={assessment.lateralEntry} />
+          ) : null}
 
           {assessment.gate1?.result === "manual_review" && onRunManualOccupation ? (
             <ManualOccupationPicker
@@ -1334,7 +1409,10 @@ export function Step3Assessment({
           ) : null}
 
           {assessment.qualificationEvidence && !gateBlocked ? (
-            <QualificationEvidenceBox evidence={assessment.qualificationEvidence} />
+            <QualificationEvidenceBox
+              evidence={assessment.qualificationEvidence}
+              lateralEntry={assessment.lateralEntry}
+            />
           ) : null}
 
           {/* 1. Suggested ANZSCOs — primary (large) + alternatives (small) + ET Maybe Suitable */}
@@ -1344,6 +1422,7 @@ export function Step3Assessment({
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                 Top matches
               </p>
+              {anzscoCheck}
             </div>
             <div
               className={`grid w-full gap-3 ${
@@ -1550,7 +1629,7 @@ export function Step3Assessment({
             <>
               {/* Meta strip: source + work experience + confidence */}
               <div className="grid gap-3 md:grid-cols-3">
-                <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+                <section className="rounded-2xl border border-line bg-surface-tint px-4 py-3.5">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                     Transcript source
                   </p>
@@ -1558,7 +1637,7 @@ export function Step3Assessment({
                     {transcriptSourceLabel(assessment)}
                   </p>
                 </section>
-                <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+                <section className="rounded-2xl border border-line bg-surface-tint px-4 py-3.5">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                     Confidence
                   </p>
