@@ -194,6 +194,9 @@ export default function Home() {
   const [eduParseSources, setEduParseSources] = useState<
     Partial<Record<DegreeLevel, "groq" | "heuristic">>
   >({});
+  const [eduLevelNotes, setEduLevelNotes] = useState<
+    Partial<Record<DegreeLevel, string[]>>
+  >({});
   const [expParseSource, setExpParseSource] = useState<"groq" | "heuristic" | null>(
     null,
   );
@@ -304,6 +307,7 @@ export default function Home() {
         setUserEditedExp(false);
         setFromCvOnlyByLevel({});
         setEduParseSources({});
+        setEduLevelNotes({});
         setExpParseSource(null);
         setEduErrors({});
         setStaleHint(false);
@@ -589,7 +593,12 @@ export default function Home() {
       fromCvOnly?: boolean;
       fallback?: boolean;
       flags?: string[];
+      levelMismatches?: { documentType?: string | null; awardName?: string | null }[];
     };
+    setEduLevelNotes((prev) => ({
+      ...prev,
+      [degreeLevel]: levelMismatchNotes(degreeLevel, r.levelMismatches),
+    }));
     const usedHeuristic =
       Boolean(r.fallback) ||
       (Array.isArray(r.flags) && r.flags.includes("heuristics_fallback"));
@@ -1138,6 +1147,7 @@ export default function Home() {
                 blocked={levelEduBlocked(level)}
                 error={eduErrors[level] ?? null}
                 parseSource={eduParseSources[level] ?? null}
+                levelNotes={eduLevelNotes[level] ?? []}
                 onRead={() => void onReadEducation(level)}
                 onChange={(key, value) => updateQualification(level, key, value)}
                 onFieldFinal={(field, value) => updateFieldFinal(level, field, value)}
@@ -1278,6 +1288,25 @@ function parseSourceLabel(source: "groq" | "heuristic"): string {
   return source === "heuristic" ? "Heuristic fallback" : "Groq";
 }
 
+/** "Transcript shows a National Diploma, not a Bachelor." One note per award. */
+function levelMismatchNotes(
+  degreeLevel: DegreeLevel,
+  mismatches: { documentType?: string | null; awardName?: string | null }[] | undefined,
+): string[] {
+  if (!Array.isArray(mismatches)) return [];
+  const target = DEGREE_LEVEL_LABELS[degreeLevel].replace(/'s$/, "");
+  const notes = mismatches
+    .map((m) => {
+      const award = (m.awardName ?? "").trim();
+      if (!award) return null;
+      const doc = m.documentType === "CERTIFICATE" ? "Certificate" : "Transcript";
+      const article = /^[aeiou]/i.test(award) ? "an" : "a";
+      return `${doc} shows ${article} ${award}, not a ${target}.`;
+    })
+    .filter((n): n is string => Boolean(n));
+  return [...new Set(notes)];
+}
+
 function EducationBlock({
   degreeLevel,
   value,
@@ -1289,6 +1318,7 @@ function EducationBlock({
   blocked,
   error,
   parseSource,
+  levelNotes,
   onRead,
   onChange,
   onFieldFinal,
@@ -1303,6 +1333,7 @@ function EducationBlock({
   blocked: boolean;
   error: string | null;
   parseSource: "groq" | "heuristic" | null;
+  levelNotes: string[];
   onRead: () => void;
   onChange: <K extends keyof Bachelors>(key: K, value: Bachelors[K]) => void;
   onFieldFinal: (field: string, value: string | null) => void;
@@ -1341,6 +1372,18 @@ function EducationBlock({
         }
       />
       {error ? <p role="alert" className="mb-3 text-sm text-[#b45309]">{error}</p> : null}
+      {levelNotes.length ? (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {levelNotes.map((note) => (
+            <span
+              key={note}
+              className="rounded-full bg-surface-tint px-2.5 py-0.5 text-xs font-medium text-ink-muted ring-1 ring-line"
+            >
+              {note}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
           className="sm:col-span-2"
