@@ -108,7 +108,7 @@ export function Step2Confirmation({
         ) : null}
       </header>
 
-      <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
+      <section className="mb-5 rounded-2xl border border-line bg-card p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
         <h3 className="mb-4 text-base font-semibold text-ink">
           Qualifications
         </h3>
@@ -195,7 +195,7 @@ export function Step2Confirmation({
         />
       ) : null}
 
-      <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
+      <section className="mb-5 rounded-2xl border border-line bg-card p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
         <h3 className="mb-4 text-base font-semibold text-ink">
           Work experience
         </h3>
@@ -311,7 +311,7 @@ function DurationCheckSection({
 }) {
   const rows = (data?.qualifications ?? []).filter((q) => selectedLevels.includes(q.degreeLevel));
   return (
-    <section className="mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
+    <section className="mb-5 rounded-2xl border border-line bg-card p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
       <h3 className="mb-1 text-base font-semibold text-ink">Study duration</h3>
       <p className="mb-4 text-xs leading-relaxed text-ink-muted">
         Taken from Transcript data: printed years or semesters, otherwise converted

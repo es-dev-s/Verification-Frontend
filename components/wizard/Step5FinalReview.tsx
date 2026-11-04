@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { lateralRouteLine } from "./LateralEntryCard";
+import { hasLateralEntryStatus, LateralEntryPill } from "./LateralEntryPill";
 import type {
   AssessmentResult,
   DegreeLevel,
@@ -26,7 +26,7 @@ import {
 
 const LABEL =
   "text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted";
-const CARD = "rounded-2xl border border-line bg-surface/95 px-4 py-4 sm:px-5";
+const CARD = "rounded-2xl border border-line bg-card px-4 py-4 sm:px-5";
 
 function SectionHeader({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -214,7 +214,7 @@ export function Step5FinalReview({
     [assessment, occupation],
   );
 
-  const lateralLine = lateralRouteLine(assessment?.lateralEntry ?? transcriptData?.lateralEntry);
+  const lateralView = assessment?.lateralEntry ?? transcriptData?.lateralEntry;
 
   const degreeBlocks = useMemo(
     () =>
@@ -359,7 +359,9 @@ export function Step5FinalReview({
               label="Engineering-titled degree"
               value={yesNo(engineeringTitledDegree)}
             />
-            {lateralLine ? <DetailItem label="Lateral entry" value={lateralLine} /> : null}
+            {hasLateralEntryStatus(lateralView) ? (
+              <DetailItem label="Lateral entry" value={<LateralEntryPill view={lateralView} />} />
+            ) : null}
           </dl>
         </section>
 

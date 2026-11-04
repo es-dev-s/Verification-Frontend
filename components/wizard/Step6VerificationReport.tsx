@@ -21,7 +21,7 @@ import {
 
 const LABEL =
   "text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted";
-const CARD = "rounded-2xl border border-line bg-surface/95 px-4 py-4 sm:px-5";
+const CARD = "rounded-2xl border border-line bg-card px-4 py-4 sm:px-5";
 const MAX_FIXES = 5;
 /** OCR confidence (0–100) below this is flagged as a possible misread. */
 const LOW_OCR_CONFIDENCE = 70;

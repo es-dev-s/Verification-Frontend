@@ -332,7 +332,7 @@ function PrecedentCheckCard({
 
   return (
     <>
-      <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+      <section className="rounded-2xl border border-line bg-card px-4 py-3.5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
@@ -595,7 +595,7 @@ function ComponentTile({
         : `Weight ${weightText(c.weight)}`;
   return (
     <section
-      className={`rounded-2xl border border-line px-4 py-3.5 ${c.used ? "bg-surface/95" : "bg-surface-tint"}`}
+      className={`rounded-2xl border border-line px-4 py-3.5 ${c.used ? "bg-card" : "bg-surface-tint"}`}
     >
       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
         {c.label}
@@ -662,7 +662,7 @@ function ScoreBreakdownCard({
 }) {
   const used = scoring.components.filter((c) => c.used && c.pct != null);
   return (
-    <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+    <section className="rounded-2xl border border-line bg-card px-4 py-3.5">
       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
         Overall score
       </p>
@@ -717,7 +717,7 @@ function DomainCountCard({ source }: { source: DomainSource | null }) {
   const rows = useMemo(() => buildDomainRows(source), [source]);
 
   return (
-    <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+    <section className="rounded-2xl border border-line bg-card px-4 py-3.5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
@@ -767,6 +767,122 @@ function DomainCountCard({ source }: { source: DomainSource | null }) {
           );
         })}
       </ul>
+    </section>
+  );
+}
+
+type FactorParts =
+  | { kind: "plain"; text: string }
+  | { kind: "detail"; label: string; detail: string }
+  | { kind: "value"; label: string; value: string };
+
+// Presentational only: splits "Label: detail" or "Label (value)" so the label reads first.
+// Anything else falls back to the original text unchanged.
+function splitFactor(line: string): FactorParts {
+  const text = line.trim().replace(/\.$/, "");
+  const colon = text.indexOf(": ");
+  if (colon > 0 && colon <= 60) {
+    const detail = text.slice(colon + 2).trim();
+    if (detail) return { kind: "detail", label: text.slice(0, colon).trim(), detail };
+  }
+  const paren = /^(.+?)\s*\(([^()]{1,40})\)$/.exec(text);
+  if (paren) return { kind: "value", label: paren[1].trim(), value: paren[2].trim() };
+  return { kind: "plain", text: line.trim() };
+}
+
+function isNoFactorsLine(line: string): boolean {
+  return /^no\b.*\bidentified\.?$/i.test(line.trim());
+}
+
+const FACTOR_TONES = {
+  reducing: {
+    dot: "bg-success",
+    pill: "bg-success-soft text-success ring-success-line",
+    marker: "bg-success-soft text-success",
+    value: "bg-success-soft text-success",
+    icon: <path d="M9.6 16.2 5.4 12l-1.4 1.4 5.6 5.6 10.4-10.4L18.6 7.2z" />,
+  },
+  increasing: {
+    dot: "bg-brand",
+    pill: "bg-[var(--warning-soft)] text-[var(--warning-ink)] ring-brand-ring",
+    marker: "bg-[var(--warning-soft)] text-[var(--warning-ink)]",
+    value: "bg-[var(--warning-soft)] text-[var(--warning-ink)]",
+    icon: <path d="M12 5.5 5 12.5l1.4 1.4 4.6-4.6V19h2V9.3l4.6 4.6 1.4-1.4z" />,
+  },
+} as const;
+
+function RiskFactorCard({
+  title,
+  tone,
+  lines,
+}: {
+  title: string;
+  tone: keyof typeof FACTOR_TONES;
+  lines: string[];
+}) {
+  const t = FACTOR_TONES[tone];
+  const items = lines.filter((l) => l.trim() && !isNoFactorsLine(l));
+  const emptyText =
+    lines.find(isNoFactorsLine) ??
+    (tone === "reducing"
+      ? "No risk-reducing factors identified."
+      : "No material risk-increasing factors identified.");
+  return (
+    <section className="flex h-full flex-col rounded-2xl border border-line bg-card px-4 py-4 sm:px-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+          <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${t.dot}`} />
+          {title}
+        </p>
+        <span
+          className={`inline-flex min-w-6 justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ring-1 ${
+            items.length ? t.pill : "bg-surface-tint text-ink-faint ring-line"
+          }`}
+        >
+          {items.length}
+        </span>
+      </div>
+      {items.length ? (
+        <ul className="mt-3.5 space-y-2.5">
+          {items.map((line, i) => {
+            const p = splitFactor(line);
+            return (
+              <li key={`${i}-${line}`} className="flex items-start gap-2.5">
+                <span
+                  aria-hidden
+                  className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full ${t.marker}`}
+                >
+                  <svg viewBox="0 0 24 24" className="h-3 w-3 fill-current">
+                    {t.icon}
+                  </svg>
+                </span>
+                {p.kind === "plain" ? (
+                  <span className="min-w-0 text-sm leading-relaxed text-ink">{p.text}</span>
+                ) : p.kind === "detail" ? (
+                  <span className="min-w-0 leading-relaxed">
+                    <span className="block text-sm font-medium text-ink">{p.label}</span>
+                    <span className="block text-xs tabular-nums text-ink-muted">{p.detail}</span>
+                  </span>
+                ) : (
+                  <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="text-sm font-medium leading-relaxed text-ink">{p.label}</span>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${t.value}`}
+                    >
+                      {p.value}
+                    </span>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="mt-3.5 flex items-center gap-2.5 rounded-xl bg-surface-tint px-3 py-2.5">
+          <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-line-strong" />
+          <p className="text-[13px] leading-snug text-ink-muted">{emptyText}</p>
+        </div>
+      )}
     </section>
   );
 }
@@ -854,7 +970,7 @@ export function Step4Risk({
       ) : null}
 
       {loading && !gateBlocked ? (
-        <div className="rounded-2xl border border-line bg-surface/95 p-8 text-center">
+        <div className="rounded-2xl border border-line bg-card p-8 text-center">
           <p className="text-sm font-medium text-ink">Calculating risk…</p>
           <p className="mt-2 text-xs text-ink-muted">
             Scoring subject coverage and historical cases.
@@ -877,7 +993,7 @@ export function Step4Risk({
 
       {risk && scoringView && !loading && !gateBlocked ? (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
+          <section className="rounded-2xl border border-line bg-card p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)]">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
@@ -931,37 +1047,9 @@ export function Step4Risk({
 
           <DomainCountCard source={domainSource} />
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-                Reducing risk
-              </p>
-              <ul className="mt-2 space-y-1.5">
-                {risk.reducingRisk.map((line) => (
-                  <li
-                    key={line}
-                    className="text-sm leading-snug text-ink"
-                  >
-                    {line}
-                  </li>
-                ))}
-              </ul>
-            </section>
-            <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-                Increasing risk
-              </p>
-              <ul className="mt-2 space-y-1.5">
-                {risk.increasingRisk.map((line) => (
-                  <li
-                    key={line}
-                    className="text-sm leading-snug text-ink"
-                  >
-                    {line}
-                  </li>
-                ))}
-              </ul>
-            </section>
+          <div className="grid items-stretch gap-3 md:grid-cols-2">
+            <RiskFactorCard title="Reducing risk" tone="reducing" lines={risk.reducingRisk} />
+            <RiskFactorCard title="Increasing risk" tone="increasing" lines={risk.increasingRisk} />
           </div>
 
           <section className="rounded-2xl border border-dashed border-line-strong bg-surface-tint px-4 py-3.5">
@@ -973,7 +1061,7 @@ export function Step4Risk({
             </p>
           </section>
 
-          <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+          <section className="rounded-2xl border border-line bg-card px-4 py-3.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">

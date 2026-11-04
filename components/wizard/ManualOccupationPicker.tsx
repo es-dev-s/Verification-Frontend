@@ -192,7 +192,7 @@ export function ManualOccupationPicker({
   return (
     <section
       aria-label="Assessor-selected occupation"
-      className="rounded-xl border border-line bg-surface/95 px-5 py-4"
+      className="rounded-xl border border-line bg-card px-5 py-4"
     >
       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
         Assessor-selected occupation

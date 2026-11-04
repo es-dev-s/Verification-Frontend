@@ -75,7 +75,7 @@ function ClientCard({
     <li className="relative">
       <Link
         href={`/?case=${encodeURIComponent(client.caseId)}`}
-        className="block rounded-2xl border border-line bg-surface/95 py-3.5 pl-4 pr-12 transition hover:border-brand-muted hover:shadow-[0_8px_24px_rgba(146,86,169,0.10)] sm:pl-5 sm:pr-14"
+        className="block rounded-2xl border border-line bg-card py-3.5 pl-4 pr-12 transition hover:border-brand-muted hover:shadow-[0_8px_24px_rgba(146,86,169,0.10)] sm:pl-5 sm:pr-14"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -353,7 +353,7 @@ export function ClientsPage() {
   }, [data, query]);
 
   return (
-    <div className="min-h-full flex-1 bg-background px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-full flex-1 px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto w-full max-w-5xl">
         <header className="mb-6">
           <h1 className="text-[1.75rem] font-semibold tracking-tight text-ink">Clients</h1>

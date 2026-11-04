@@ -339,7 +339,7 @@ function PriorStudySubjects({
     <section
       id={PRIOR_STUDY_SECTION_ID}
       aria-label="Prior study subjects"
-      className="scroll-mt-6 overflow-hidden rounded-2xl border border-line bg-surface/95"
+      className="scroll-mt-6 overflow-hidden rounded-2xl border border-line bg-card"
     >
       <button
         type="button"
@@ -1284,7 +1284,7 @@ export function Step3Assessment({
       </header>
 
       {loading ? (
-        <div className="rounded-2xl border border-line bg-surface/95 p-8 text-center">
+        <div className="rounded-2xl border border-line bg-card p-8 text-center">
           <p className="text-sm font-medium text-ink">
             Matching subjects against ANZSCO rubrics
           </p>
@@ -1315,7 +1315,7 @@ export function Step3Assessment({
 
           <section
             aria-label="Extracted subjects"
-            className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
+            className="rounded-2xl border border-line bg-card p-4 sm:p-5"
           >
             <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
@@ -1393,7 +1393,7 @@ export function Step3Assessment({
           {!assessment.gate1 && assessment.routing?.note ? (
             <section
               aria-label="Qualification route"
-              className="rounded-xl border border-line bg-surface/95 px-4 py-2.5"
+              className="rounded-xl border border-line bg-card px-4 py-2.5"
             >
               <p className="text-sm leading-snug text-ink">{assessment.routing.note}</p>
               {assessment.routing.notes.length ? (
@@ -1450,7 +1450,7 @@ export function Step3Assessment({
                   } ${primarySpansRows ? "lg:row-span-2" : ""} ${
                     active
                       ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
-                      : "border-line bg-surface/95 hover:border-line-strong"
+                      : "border-line bg-card hover:border-line-strong"
                   }`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1518,7 +1518,7 @@ export function Step3Assessment({
                       } ${
                         active
                           ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
-                          : "border-line bg-surface/95 hover:border-line-strong"
+                          : "border-line bg-card hover:border-line-strong"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1601,7 +1601,7 @@ export function Step3Assessment({
                 } ${primarySpansRows ? "self-stretch" : "self-start"} ${
                   active
                     ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
-                    : "border-line bg-surface/95"
+                    : "border-line bg-card"
                 }`;
                 return etCandidate ? (
                   <button
@@ -1741,7 +1741,7 @@ export function Step3Assessment({
               {/* 2. Full breakdown — three lists */}
               <section
                 aria-label={`Breakdown for ${selected.title}`}
-                className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
+                className="rounded-2xl border border-line bg-card p-4 sm:p-5"
               >
                 <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
                   <div>

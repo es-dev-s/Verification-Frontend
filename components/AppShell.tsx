@@ -29,7 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-full flex-1 flex-col lg:flex-row">
       <nav
         aria-label="Main"
-        className="sticky top-0 z-30 flex items-center gap-1.5 border-b border-line bg-surface/95 px-3 py-2 backdrop-blur print:hidden lg:h-screen lg:w-52 lg:shrink-0 lg:flex-col lg:items-stretch lg:gap-1 lg:border-b-0 lg:border-r lg:px-3 lg:py-6"
+        className="sticky top-0 z-30 flex items-center gap-1.5 border-b border-line bg-nav px-3 py-2 backdrop-blur-md print:hidden lg:h-screen lg:w-52 lg:shrink-0 lg:flex-col lg:items-stretch lg:gap-1 lg:border-b-0 lg:border-r lg:px-3 lg:py-6"
       >
         <p className="mr-2 hidden px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-deeper sm:block lg:mb-4 lg:mr-0">
           Verification

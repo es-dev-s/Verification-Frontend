@@ -116,7 +116,7 @@ export function SpecialisationCard({ result }: { result: SpecialisationResult })
   return (
     <section
       aria-label="Civil specialisation pathways"
-      className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
+      className="rounded-2xl border border-line bg-card p-4 sm:p-5"
     >
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>

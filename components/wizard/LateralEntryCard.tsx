@@ -297,7 +297,7 @@ export function LateralEntrySection({
       <section
         aria-label="Lateral entry"
         className={`mb-5 flex flex-wrap items-center gap-3 rounded-2xl border px-5 py-4 ${
-          resolved && !view.flagged ? "border-line bg-surface/95" : "border-[#fdba74] bg-[#fffaf3]"
+          resolved && !view.flagged ? "border-line bg-card" : "border-[#fdba74] bg-[#fffaf3]"
         }`}
       >
         <div className="min-w-0 flex-1">
@@ -421,7 +421,7 @@ export function LateralEntryLine({ view }: { view: LateralEntryView | null | und
     <section
       aria-label="Lateral entry"
       className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-4 py-2.5 ${
-        warn ? "border-[#fdba74] bg-[#fffaf3]" : "border-line bg-surface/95"
+        warn ? "border-[#fdba74] bg-[#fffaf3]" : "border-line bg-card"
       }`}
     >
       <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Lateral entry</span>

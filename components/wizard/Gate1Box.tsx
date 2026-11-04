@@ -41,7 +41,7 @@ export function Gate1Box({ gate }: { gate: Gate1Decision }) {
   return (
     <section
       aria-label="Gate 1 qualification check"
-      className="rounded-xl border border-line bg-surface/95 px-5 py-4"
+      className="rounded-xl border border-line bg-card px-5 py-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">

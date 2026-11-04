@@ -935,7 +935,7 @@ export default function Home() {
 
   if (bootError) {
     return (
-      <div className="min-h-full bg-background px-4 py-10">
+      <div className="min-h-full px-4 py-10">
         <main className="mx-auto max-w-2xl rounded-2xl border border-line bg-surface p-6">
           <h1 className="text-lg font-semibold text-ink">Cannot reach API</h1>
           <p className="mt-2 text-sm text-ink-muted">{bootError}</p>
