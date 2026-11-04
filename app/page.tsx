@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   checkAssessOccupation,
+  getEngineeringManagerCheck,
+  saveEngineeringManagerAnswers,
   createCase,
   deleteDocument,
   extractTranscriptData,
@@ -998,6 +1000,12 @@ export default function Home() {
           }
           onCheckOccupation={
             caseId ? (occupationId) => checkAssessOccupation(caseId, occupationId) : undefined
+          }
+          onEngineeringManager={
+            caseId
+              ? (answers) =>
+                  answers ? saveEngineeringManagerAnswers(caseId, answers) : getEngineeringManagerCheck(caseId)
+              : undefined
           }
           onConfirmOccupation={(candidate: AnzscoCandidate) => {
             void goToRiskStep(candidate);

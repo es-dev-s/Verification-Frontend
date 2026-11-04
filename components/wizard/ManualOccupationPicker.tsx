@@ -21,12 +21,15 @@ export function ManualOccupationPicker({
   onRun,
   compact = false,
   actionLabel = "Run matching",
+  includeCheckOnly = false,
 }: {
   current: Current;
   busy?: boolean;
   onRun: (occupationId: string) => void;
   compact?: boolean;
   actionLabel?: string;
+  /** List check-only occupations (Engineering Manager); off for manual-review matching. */
+  includeCheckOnly?: boolean;
 }) {
   const listId = useId();
   const [options, setOptions] = useState<ManualOccupationOption[] | null>(null);
@@ -40,7 +43,7 @@ export function ManualOccupationPicker({
     let alive = true;
     getAssessOccupations()
       .then((list) => {
-        if (alive) setOptions(list);
+        if (alive) setOptions(includeCheckOnly ? list : list.filter((o) => o.flow !== "engineering_manager"));
       })
       .catch(() => {
         if (alive) setLoadError("Could not load the occupation list.");
@@ -48,7 +51,7 @@ export function ManualOccupationPicker({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [includeCheckOnly]);
 
   const picked = useMemo(
     () => options?.find((o) => o.occupationId === pickedId && o.available) ?? null,

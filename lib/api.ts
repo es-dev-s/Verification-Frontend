@@ -275,6 +275,24 @@ export async function checkAssessOccupation(
   });
 }
 
+/** Engineering Manager check with the saved answers (read-only). */
+export async function getEngineeringManagerCheck(
+  caseId: string,
+): Promise<import("./types").EngineeringManagerCheck> {
+  return api(`/cases/${caseId}/assess/engineering-manager`);
+}
+
+/** Save the Engineering Manager answers and return the check. */
+export async function saveEngineeringManagerAnswers(
+  caseId: string,
+  answers: import("./types").EmAnswers,
+): Promise<import("./types").EngineeringManagerCheck> {
+  return api(`/cases/${caseId}/assess/engineering-manager`, {
+    method: "PUT",
+    body: JSON.stringify(answers),
+  });
+}
+
 /** Occupations an assessor can pick for a manual-review case. */
 export async function getAssessOccupations(): Promise<
   import("./types").ManualOccupationOption[]

@@ -5,6 +5,8 @@ import type {
   AnzscoCandidate,
   AssessmentResult,
   CoreBand,
+  EmAnswers,
+  EngineeringManagerCheck as EngineeringManagerResult,
   EtTierDetail,
   OccupationCheck,
   RubricSubjectCatalogEntry,
@@ -13,6 +15,7 @@ import type {
   VocationalUnitMatch,
 } from "@/lib/types";
 import { gateBlocksScoring } from "@/lib/types";
+import { EngineeringManagerCheck } from "./EngineeringManagerCheck";
 import { SpecialisationCard } from "./SpecialisationCard";
 import { FOCUS_RING } from "./UploadTile";
 import { Gate1Box } from "./Gate1Box";
@@ -652,16 +655,22 @@ function CheckResultCard({
   );
 }
 
+/** Picker id of Engineering Manager (133211): opens its own check, never a suggestion. */
+const ENGINEERING_MANAGER_ID = "engineering-manager";
+
 /** Always-on assessor check: score any ANZSCO on the saved subjects (nothing is saved). Opens in a popup. */
 function AnzscoCheck({
   onCheck,
+  onEngineeringManager,
   onShowPriorStudy,
 }: {
   onCheck: (occupationId: string) => Promise<OccupationCheck>;
+  onEngineeringManager?: (answers?: EmAnswers) => Promise<EngineeringManagerResult>;
   onShowPriorStudy?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<OccupationCheck | null>(null);
+  const [emOpen, setEmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
   const [open, setOpen] = useState(false);
@@ -688,8 +697,15 @@ function AnzscoCheck({
   }, [open]);
 
   async function run(occupationId: string) {
-    setBusy(true);
     setError(null);
+    if (occupationId === ENGINEERING_MANAGER_ID && onEngineeringManager) {
+      // Engineering Manager has its own check (answers + five requirements).
+      setResult(null);
+      setEmOpen(true);
+      return;
+    }
+    setEmOpen(false);
+    setBusy(true);
     try {
       setResult(await onCheck(occupationId));
     } catch (err) {
@@ -702,6 +718,7 @@ function AnzscoCheck({
 
   function clear() {
     setResult(null);
+    setEmOpen(false);
     setError(null);
     setPickerKey((k) => k + 1);
   }
@@ -751,10 +768,14 @@ function AnzscoCheck({
                   current={null}
                   busy={busy}
                   actionLabel="Check"
+                  includeCheckOnly
                   onRun={(id) => void run(id)}
                 />
                 {error ? (
                   <p className="mt-3 text-sm leading-snug text-[var(--warning-ink)]">{error}</p>
+                ) : null}
+                {emOpen && onEngineeringManager ? (
+                  <EngineeringManagerCheck load={onEngineeringManager} onClose={clear} />
                 ) : null}
                 {result ? (
                   <CheckResultCard
@@ -1070,6 +1091,7 @@ export function Step3Assessment({
   onConfirmOccupation,
   onRunManualOccupation,
   onCheckOccupation,
+  onEngineeringManager,
 }: {
   assessment: AssessmentResult | null;
   loading: boolean;
@@ -1082,6 +1104,8 @@ export function Step3Assessment({
   onRunManualOccupation?: (occupationId: string) => void;
   /** Assessor check of any ANZSCO on the saved subjects (read-only). */
   onCheckOccupation?: (occupationId: string) => Promise<OccupationCheck>;
+  /** Engineering Manager check in the Check an ANZSCO popup (answers saved on the case). */
+  onEngineeringManager?: (answers?: EmAnswers) => Promise<EngineeringManagerResult>;
 }) {
   const candidates = useMemo(
     () => (assessment ? candidatesFromAssessment(assessment) : []),
@@ -1178,6 +1202,7 @@ export function Step3Assessment({
     !(assessment.gate1?.result === "manual_review" && onRunManualOccupation) ? (
       <AnzscoCheck
         onCheck={onCheckOccupation}
+        onEngineeringManager={onEngineeringManager}
         onShowPriorStudy={
           assessment.lateralEntry?.priorSubjects?.length ? showPriorStudy : undefined
         }

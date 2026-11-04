@@ -692,9 +692,57 @@ export type ManualOccupationOption = {
   occupationId: string | null;
   anzscoCode: string;
   title: string;
-  flow: "academic" | "vocational_units" | "telecom_group" | null;
+  flow: "academic" | "vocational_units" | "telecom_group" | "engineering_manager" | null;
   available: boolean;
   unavailableReason: string | null;
+};
+
+/** Engineering Manager (133211): CV job level picked by the assessor. */
+export type EmJobLevel = "professional" | "manager" | "project" | "other";
+
+/** Engineering Manager assessor answers (saved on the case). */
+export type EmAnswers = {
+  disciplineId: string | null;
+  /** Level per CV job, keyed by the job key. */
+  jobLevels: Record<string, EmJobLevel>;
+  managerialRole: boolean | null;
+  managersReport: boolean | null;
+  rseApplied: boolean | null;
+  redirectConfirmed: boolean | null;
+};
+
+export type EmCheckStatus = "met" | "not_met" | "pending";
+
+/** Engineering Manager check (Check an ANZSCO only; never a suggestion). */
+export type EngineeringManagerCheck = {
+  anzscoCode: string;
+  title: string;
+  outcome: "qualified" | "not_qualified" | "redirect" | "pending";
+  message: string;
+  missing: string[];
+  checks: Array<{ id: string; label: string; status: EmCheckStatus; detail: string | null }>;
+  jobs: Array<{
+    key: string;
+    title: string | null;
+    employer: string | null;
+    start: string | null;
+    end: string | null;
+    suggestedLevel: EmJobLevel;
+    level: EmJobLevel;
+    partTime: boolean;
+    years: number | null;
+  }>;
+  years: { professional: number; manager: number };
+  redirectSuggested: boolean;
+  answers: EmAnswers;
+  disciplines: Array<{ occupationId: string; anzscoCode: string; title: string }>;
+  prerequisite: {
+    status: EmCheckStatus;
+    disciplineId: string | null;
+    anzscoCode: string | null;
+    title: string | null;
+    detail: string;
+  };
 };
 
 /**
