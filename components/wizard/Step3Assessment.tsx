@@ -17,6 +17,7 @@ import type {
 import { gateBlocksScoring } from "@/lib/types";
 import { EngineeringManagerCheck } from "./EngineeringManagerCheck";
 import { SpecialisationCard } from "./SpecialisationCard";
+import { AssociateFallbackCard } from "./AssociateFallbackCard";
 import { FOCUS_RING } from "./UploadTile";
 import { Gate1Box } from "./Gate1Box";
 import { LateralEntryLine } from "./LateralEntryCard";
@@ -28,6 +29,12 @@ const CORE_BAND_LABEL: Record<CoreBand, string> = {
   low_risk: "Low Risk",
   medium_risk: "Medium Risk",
   high_risk: "High Risk",
+};
+
+const FOUNDATIONAL_BAND_LABEL: Record<"no_risk" | "low_risk" | "flag", string> = {
+  no_risk: "No Risk",
+  low_risk: "Low Risk",
+  flag: "Flag",
 };
 
 function electiveStatusLabel(v: VocationalAssessmentDetail): string {
@@ -68,6 +75,37 @@ function suggestionBadge(c: AnzscoCandidate): { label: string; className: string
     default:
       return null;
   }
+}
+
+const DRAFTSPERSON_PATH_LABEL: Record<NonNullable<AnzscoCandidate["draftspersonPath"]>["path"], string> = {
+  au_unit_codes: "AU unit codes",
+  overseas_subjects: "Overseas subjects",
+  both_best: "Both scored · best kept",
+};
+
+/** 312211 / 312311: which draftsperson path was scored, with the origin reason. */
+function DraftspersonPathNote({ c }: { c: AnzscoCandidate }) {
+  const p = c.draftspersonPath;
+  if (!p) return null;
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+      <span
+        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+          p.path === "both_best"
+            ? "bg-[var(--warning-soft)] text-[var(--warning-ink)]"
+            : "bg-surface-tint text-ink"
+        }`}
+      >
+        {DRAFTSPERSON_PATH_LABEL[p.path]}
+      </span>
+      <span className="min-w-0 break-words">
+        Origin {p.origin}: {p.reason}
+        {p.alsoScored
+          ? ` Also scored ${DRAFTSPERSON_PATH_LABEL[p.alsoScored.path]}: ${p.alsoScored.confidenceScore}%.`
+          : ""}
+      </span>
+    </p>
+  );
 }
 
 function methodBadge(method: SubjectMatchRow["method"]): {
@@ -163,6 +201,16 @@ function CandidateMetrics({
       ]
     : c.vocational
     ? [
+        ...(c.vocational.foundationalTotal
+          ? [
+              [
+                "Foundational",
+                `${c.vocational.foundationalMatched ?? 0}/${c.vocational.foundationalTotal}${
+                  c.vocational.foundationalBand ? ` · ${FOUNDATIONAL_BAND_LABEL[c.vocational.foundationalBand]}` : ""
+                }`,
+              ] as [string, string],
+            ]
+          : []),
         [
           "Core units",
           `${c.vocational.coreMatched}/${c.vocational.coreTotal} · ${CORE_BAND_LABEL[c.vocational.coreBand]}`,
@@ -173,7 +221,7 @@ function CandidateMetrics({
     : [
         ["Tier 1", coverageLabel(c.foundationalMatched, c.foundationalExpected, c.foundationalPct)],
         ["Tier 2", coverageLabel(c.coreMatched, c.coreExpected, c.corePct)],
-        ...(c.track === "engineering_associate"
+        ...((c.capstoneApplies ?? c.track !== "engineering_associate") === false
           ? []
           : [["Capstone", c.tier3GateMet ? "Capstone found" : "Capstone not found"] as [string, string]]),
       ];
@@ -613,6 +661,7 @@ function CheckResultCard({
             <span className="font-mono tabular-nums"> · {c.anzscoCode}</span>
           </p>
           {c.track ? <p className="mt-0.5 text-xs text-ink-muted">{TRACK_SHORT[c.track]}</p> : null}
+          <DraftspersonPathNote c={c} />
         </div>
         <div className="flex shrink-0 items-start gap-2">
           <p className="font-mono text-2xl font-semibold tabular-nums text-brand-deeper">
@@ -939,12 +988,13 @@ function SubjectVariantsModal({
 /** Step 3 breakdown for unit-code occupations (e.g. 312311). */
 function VocationalBreakdown({ detail }: { detail: VocationalAssessmentDetail }) {
   const t = detail.thresholds;
+  const pool = detail.coreMode === "pool";
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-line bg-surface-subtle px-3.5 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-            Core units
+            {pool ? "Core units (pool)" : "Core units"}
           </p>
           <p className="mt-1 text-sm font-medium text-ink">
             {detail.coreMatched}/{detail.coreTotal} · {CORE_BAND_LABEL[detail.coreBand]}
@@ -1044,7 +1094,9 @@ function VocationalBreakdown({ detail }: { detail: VocationalAssessmentDetail })
                 ))}
               </ul>
             ) : (
-              <EmptyListNote text="All core units found" />
+              <EmptyListNote
+                text={pool ? "Core units are a pool: unmatched pool units are not listed" : "All core units found"}
+              />
             )}
           </div>
         </div>
@@ -1761,6 +1813,10 @@ export function Step3Assessment({
                     ))}
                   </ul>
                 </section>
+              ) : null}
+
+              {assessment.associateFallback?.suggested && !gateBlocked ? (
+                <AssociateFallbackCard fallback={assessment.associateFallback} />
               ) : null}
 
               {/* 2. Full breakdown — three lists */}

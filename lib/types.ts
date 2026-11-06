@@ -352,6 +352,34 @@ export type VocationalAssessmentDetail = {
   qualificationMet: boolean;
   qualificationNote: string;
   flags: string[];
+  /** "pool": core units are a list to pick from (matched units count against coreTotal). */
+  coreMode?: "all" | "pool";
+  /** Foundational units (Tier 1). Absent when the rubric has none. */
+  foundationalMatched?: number;
+  foundationalTotal?: number;
+  foundationalBand?: "no_risk" | "low_risk" | "flag";
+  foundationalThresholds?: { noRisk: number; lowRisk: number };
+  matchedFoundational?: VocationalUnitMatch[];
+  missingFoundational?: Array<{ unitId: string; code: string; title: string }>;
+};
+
+/** Draftsperson scoring path (312211 / 312311): AU unit codes, overseas subjects, or both (best kept). */
+export type DraftspersonPathId = "au_unit_codes" | "overseas_subjects" | "both_best";
+
+export type DraftspersonPath = {
+  path: DraftspersonPathId;
+  /** Qualification origin from Step 1 data. */
+  origin: "australian" | "overseas" | "unknown";
+  /** Why the origin was decided (country, AU qualification code, unit codes …). */
+  reason: string;
+  /** both_best: assessor note (origin unknown, which path was kept and why). */
+  note?: string;
+  /** both_best: the path that was also scored but not kept, with its result. */
+  alsoScored?: {
+    path: "au_unit_codes" | "overseas_subjects";
+    determination: "verified_no_risk" | "conditional" | "not_verified" | "no_match";
+    confidenceScore: number;
+  } | null;
 };
 
 export type DurationEvidence = {
@@ -436,6 +464,10 @@ export type AnzscoCandidate = {
   vocational?: VocationalAssessmentDetail | null;
   /** Gate 1 track this occupation was scored under. */
   track?: Gate1TrackId;
+  /** 312211 / 312311 only: which draftsperson path was scored and why. */
+  draftspersonPath?: DraftspersonPath | null;
+  /** False when the Tier 3 gate was not applied (Engineering Associate track, except 312411). */
+  capstoneApplies?: boolean;
 };
 
 export type RiskLevel = "no_risk" | "low" | "medium" | "high";
@@ -613,6 +645,27 @@ export type AssessmentResult = {
   familyAdjustment?: FamilyAdjustment;
   /** Civil specialisation check (Structural / Geotechnical / Transport, doc 12). */
   specialisation?: SpecialisationResult | null;
+  /** 312999 fallback (no rubric): suggested when no specific Associate ANZSCO reaches 70%. */
+  associateFallback?: AssociateFallback | null;
+};
+
+/** One specific Associate ANZSCO in the 312999 near-miss list. */
+export type AssociateFallbackNearMiss = {
+  anzscoCode: string;
+  title: string;
+  confidenceScore: number | null;
+  determination: string | null;
+  missing: string[];
+};
+
+/** 312999 Building and Engineering Technicians nec: fallback only, never a first-pass match. */
+export type AssociateFallback = {
+  anzscoCode: string;
+  title: string;
+  suggested: boolean;
+  threshold: number;
+  reason: string;
+  nearMisses: AssociateFallbackNearMiss[];
 };
 
 /** One occupation after the family rules (Step 4 ANZSCO cards). */
