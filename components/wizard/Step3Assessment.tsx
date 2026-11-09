@@ -1,16 +1,111 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AnzscoCandidate,
   AssessmentResult,
+  CoreBand,
+  EmAnswers,
+  EngineeringManagerCheck as EngineeringManagerResult,
+  EtTierDetail,
+  OccupationCheck,
   RubricSubjectCatalogEntry,
   SubjectMatchRow,
+  VocationalAssessmentDetail,
+  VocationalUnitMatch,
 } from "@/lib/types";
+import { gateBlocksScoring } from "@/lib/types";
+import { EngineeringManagerCheck } from "./EngineeringManagerCheck";
+import { SpecialisationCard } from "./SpecialisationCard";
+import { AssociateFallbackCard } from "./AssociateFallbackCard";
+import { FOCUS_RING } from "./UploadTile";
+import { Gate1Box } from "./Gate1Box";
+import { LateralEntryLine } from "./LateralEntryCard";
+import { ManualOccupationPicker } from "./ManualOccupationPicker";
+import { QualificationEvidenceBox } from "./QualificationEvidenceBox";
+
+const CORE_BAND_LABEL: Record<CoreBand, string> = {
+  no_risk: "No Risk",
+  low_risk: "Low Risk",
+  medium_risk: "Medium Risk",
+  high_risk: "High Risk",
+};
+
+const FOUNDATIONAL_BAND_LABEL: Record<"no_risk" | "low_risk" | "flag", string> = {
+  no_risk: "No Risk",
+  low_risk: "Low Risk",
+  flag: "Flag",
+};
+
+function electiveStatusLabel(v: VocationalAssessmentDetail): string {
+  if (v.electiveStatus === "not_assessed") return "Not assessed – minimum not set";
+  return v.electiveStatus === "met" ? "Met" : "Not met";
+}
+
+function unitMatchLabel(m: VocationalUnitMatch): string {
+  switch (m.matchType) {
+    case "exact":
+      return "Code";
+    case "release":
+      return `Release ${m.transcriptCode ?? ""}`.trim();
+    case "equivalent":
+      return `Via ${m.transcriptCode ?? "equivalent code"}`;
+    case "typo":
+      return `Typo ${m.transcriptCode ?? ""}`.trim();
+    case "title":
+      return "Title only";
+  }
+}
 
 function coverageLabel(matched: number, expected: number, pct: number): string {
   const rounded = Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
   return `${matched} / ${expected} — ${rounded}%`;
+}
+
+function suggestionBadge(c: AnzscoCandidate): { label: string; className: string } | null {
+  switch (c.suggestionStatus) {
+    case "recommended":
+      return { label: "Recommended", className: "bg-success-soft text-success" };
+    case "eligible":
+      return { label: "Eligible", className: "bg-surface-tint text-ink" };
+    case "rejected":
+      return { label: "Rejected", className: "bg-[var(--warning-soft)] text-[var(--warning-ink)]" };
+    case "review":
+      return { label: "Review", className: "bg-[var(--warning-soft)] text-[var(--warning-ink)]" };
+    default:
+      return null;
+  }
+}
+
+const DRAFTSPERSON_PATH_LABEL: Record<NonNullable<AnzscoCandidate["draftspersonPath"]>["path"], string> = {
+  au_unit_codes: "AU unit codes",
+  overseas_subjects: "Overseas subjects",
+  both_best: "Both scored · best kept",
+};
+
+/** 312211 / 312311: which draftsperson path was scored, with the origin reason. */
+function DraftspersonPathNote({ c }: { c: AnzscoCandidate }) {
+  const p = c.draftspersonPath;
+  if (!p) return null;
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
+      <span
+        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+          p.path === "both_best"
+            ? "bg-[var(--warning-soft)] text-[var(--warning-ink)]"
+            : "bg-surface-tint text-ink"
+        }`}
+      >
+        {DRAFTSPERSON_PATH_LABEL[p.path]}
+      </span>
+      <span className="min-w-0 break-words">
+        Origin {p.origin}: {p.reason}
+        {p.alsoScored
+          ? ` Also scored ${DRAFTSPERSON_PATH_LABEL[p.alsoScored.path]}: ${p.alsoScored.confidenceScore}%.`
+          : ""}
+      </span>
+    </p>
+  );
 }
 
 function methodBadge(method: SubjectMatchRow["method"]): {
@@ -83,19 +178,64 @@ function formatConfidencePct(score: number): string {
   return `${Math.round(score)}%`;
 }
 
-function recommendationSummary(c: AnzscoCandidate): string {
-  const score = resolveConfidenceScore(c);
-  const t1 = coverageLabel(
-    c.foundationalMatched,
-    c.foundationalExpected,
-    c.foundationalPct,
+/** Family-adjusted % (one decimal when needed, e.g. 67.5%). */
+function formatAdjustedPct(score: number): string {
+  const r = Math.round(score * 10) / 10;
+  return `${Number.isInteger(r) ? r : r.toFixed(1)}%`;
+}
+
+/** Tier / unit coverage lines for a candidate card. */
+function CandidateMetrics({
+  c,
+  compact = false,
+  className,
+}: {
+  c: AnzscoCandidate;
+  compact?: boolean;
+  className: string;
+}) {
+  const rows: Array<[string, string]> = c.suggestionStatus
+    ? [
+        ["Foundational", coverageLabel(c.foundationalMatched, c.foundationalExpected, c.foundationalPct)],
+        ["Core units", coverageLabel(c.coreMatched, c.coreExpected, c.corePct)],
+      ]
+    : c.vocational
+    ? [
+        ...(c.vocational.foundationalTotal
+          ? [
+              [
+                "Foundational",
+                `${c.vocational.foundationalMatched ?? 0}/${c.vocational.foundationalTotal}${
+                  c.vocational.foundationalBand ? ` · ${FOUNDATIONAL_BAND_LABEL[c.vocational.foundationalBand]}` : ""
+                }`,
+              ] as [string, string],
+            ]
+          : []),
+        [
+          "Core units",
+          `${c.vocational.coreMatched}/${c.vocational.coreTotal} · ${CORE_BAND_LABEL[c.vocational.coreBand]}`,
+        ],
+        ["Electives", electiveStatusLabel(c.vocational)],
+        ["Qualification", c.vocational.qualificationMet ? "Accepted" : "To confirm"],
+      ]
+    : [
+        ["Tier 1", coverageLabel(c.foundationalMatched, c.foundationalExpected, c.foundationalPct)],
+        ["Tier 2", coverageLabel(c.coreMatched, c.coreExpected, c.corePct)],
+        ...((c.capstoneApplies ?? c.track !== "engineering_associate") === false
+          ? []
+          : [["Capstone", c.tier3GateMet ? "Capstone found" : "Capstone not found"] as [string, string]]),
+      ];
+  const shown = compact ? rows.slice(0, 2) : rows;
+  return (
+    <dl className={className}>
+      {shown.map(([label, value]) => (
+        <div key={label} className="flex min-w-0 justify-between gap-2">
+          <dt className="shrink-0 text-ink-muted">{label}</dt>
+          <dd className={`min-w-0 break-words text-right ${/\d/.test(value) ? "font-mono tabular-nums" : ""}`}>{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
-  const t2 = coverageLabel(c.coreMatched, c.coreExpected, c.corePct);
-  const gate = c.tier3GateMet ? "capstone met" : "capstone missing";
-  if (c.recommended) {
-    return `Recommended ${c.title} (${c.anzscoCode}) at ${formatConfidencePct(score)} confidence — Tier 1 ${t1}, Tier 2 ${t2}, ${gate}.`;
-  }
-  return `Highest coverage is ${c.title} (${c.anzscoCode}) at ${formatConfidencePct(score)}, but it is not strong enough to recommend — Tier 1 ${t1}, Tier 2 ${t2}.`;
 }
 
 function determinationLabel(
@@ -122,10 +262,24 @@ function lightNormalize(name: string): string {
     .trim();
 }
 
+/** Gate 1 stops scoring (an assessor-selected occupation re-opens it). */
+function isGateBlocked(assessment: AssessmentResult | null | undefined): boolean {
+  return gateBlocksScoring(assessment);
+}
+
+const TRACK_SHORT: Record<NonNullable<AnzscoCandidate["track"]>, string> = {
+  professional_engineer: "Professional Engineer track",
+  engineering_technologist: "Engineering Technologist track",
+  engineering_associate: "Engineering Associate track",
+};
+
 function candidatesFromAssessment(
   assessment: AssessmentResult,
 ): AnzscoCandidate[] {
-  if (assessment.candidates?.length) return assessment.candidates.slice(0, 3);
+  // Gate 1 blocked (not eligible / manual review): nothing was scored.
+  if (isGateBlocked(assessment)) return [];
+  // Up to 3 matched + ET (Maybe Suitable) when ET took a top-3 slot.
+  if (assessment.candidates?.length) return assessment.candidates.slice(0, 4);
 
   // Legacy cached results without candidates[] — synthesize one card.
   if (!assessment.anzscoCode && !assessment.title) {
@@ -199,6 +353,130 @@ type GroupedRubricSubject = {
   hits: SubjectMatchRow[];
   bestMethod: SubjectMatchRow["method"];
 };
+
+/** Prior-study subject name → the Foundational rubric subject it matched (one occupation). */
+function priorStudyUse(matches: readonly SubjectMatchRow[]): Map<string, string> {
+  const used = new Map<string, string>();
+  for (const m of matches) {
+    if (!m.priorStudy || !isScoringMatch(m) || m.tier !== "tier1") continue;
+    const key = lightNormalize(m.transcriptName);
+    if (!used.has(key)) used.set(key, m.rubricSubject!);
+  }
+  return used;
+}
+
+const PRIOR_STUDY_SECTION_ID = "prior-study-subjects";
+
+/** Lateral entry: the earlier study's subjects, as their own section next to Extracted subjects. */
+function PriorStudySubjects({
+  names,
+  source,
+  matches,
+  open,
+  onToggle,
+}: {
+  names: string[];
+  /** Prior study document name(s), when known. */
+  source: string | null;
+  /** Matches of the occupation in view; prior-study ones are marked as used. */
+  matches: readonly SubjectMatchRow[];
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const used = priorStudyUse(matches);
+  const usedCount = names.filter((n) => used.has(lightNormalize(n))).length;
+  const listId = `${PRIOR_STUDY_SECTION_ID}-list`;
+  return (
+    <section
+      id={PRIOR_STUDY_SECTION_ID}
+      aria-label="Prior study subjects"
+      className="scroll-mt-6 overflow-hidden rounded-2xl border border-line bg-card"
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={listId}
+        className={`flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition hover:bg-surface-subtle sm:px-5 ${FOCUS_RING}`}
+      >
+        <span className="min-w-0">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+              Prior study subjects
+            </span>
+            <span className="rounded-full bg-surface-subtle px-2 py-0.5 text-xs font-semibold tabular-nums text-ink ring-1 ring-line">
+              {names.length}
+            </span>
+          </span>
+  
+        </span>
+        <span className="flex shrink-0 items-center gap-2.5">
+          {usedCount ? (
+            <span className="rounded-full bg-brand/15 px-2.5 py-1 text-xs font-semibold text-[#8a4f12]">
+              {usedCount} used in matching
+            </span>
+          ) : null}
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className={`h-5 w-5 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`}
+          >
+            <path
+              fillRule="evenodd"
+              d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </span>
+      </button>
+      {open ? (
+        <ul
+          id={listId}
+          className="grid max-h-72 gap-1.5 overflow-y-auto overscroll-contain border-t border-line px-4 py-3.5 sm:grid-cols-2 sm:px-5 [scrollbar-gutter:stable]"
+        >
+          {names.map((name, i) => {
+            const rubric = used.get(lightNormalize(name));
+            return (
+              <li
+                key={`prior-${name}-${i}`}
+                className={`rounded-lg px-2.5 py-2 text-xs leading-snug text-ink ${
+                  rubric
+                    ? "border-l-[3px] border-brand bg-brand/10"
+                    : "bg-surface-subtle"
+                }`}
+              >
+                <span className="flex items-start gap-1.5">
+                  <span className="min-w-0 flex-1 font-medium">{name}</span>
+                  {rubric ? (
+                    <svg
+                      aria-label="Used in matching"
+                      role="img"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="mt-px h-4 w-4 shrink-0 text-[#8a4f12]"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.58l7.3-7.3a1 1 0 0 1 1.4 0Z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  ) : null}
+                </span>
+                {rubric ? (
+                  <span className="mt-1 block text-xs text-[#8a4f12]">
+                    Counted as <span className="font-semibold">{rubric}</span>
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
 
 function groupMatchedByRubric(
   matches: SubjectMatchRow[],
@@ -286,6 +564,291 @@ function EmptyListNote({ text }: { text: string }) {
   return <p className="py-2 text-xs text-ink-faint">{text}</p>;
 }
 
+/** Matched rubric subjects of one tier for the ANZSCO check card. */
+function CheckTierList({
+  title,
+  coverage,
+  groups,
+  onShowPriorStudy,
+}: {
+  title: string;
+  coverage: string;
+  groups: GroupedRubricSubject[];
+  onShowPriorStudy?: () => void;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-line bg-surface-subtle p-3.5">
+      <TierGroupHeader title={title} coverage={coverage} />
+      {groups.length ? (
+        <ul className="max-h-60 space-y-1.5 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+          {groups.map((g) => {
+            const prior = g.hits.filter((h) => h.priorStudy).map((h) => h.transcriptName);
+            const own = g.hits.filter((h) => !h.priorStudy).map((h) => h.transcriptName);
+            return (
+              <li key={`chk-${g.rubricSubject}`} className="rounded-lg bg-surface px-2.5 py-2">
+                <p className="text-sm font-medium leading-snug text-ink">{g.rubricSubject}</p>
+                {own.length ? (
+                  <p className="mt-0.5 text-xs text-ink-muted">from {own.join(", ")}</p>
+                ) : null}
+                {prior.length ? (
+                  onShowPriorStudy ? (
+                    <button
+                      type="button"
+                      onClick={onShowPriorStudy}
+                      title="Show prior study subjects"
+                      className={`mt-1.5 flex w-full items-center gap-2 rounded-lg border-l-[3px] border-brand bg-brand/10 px-2 py-1.5 text-left text-xs text-ink transition hover:bg-brand/20 ${FOCUS_RING}`}
+                    >
+                      <span className="shrink-0 rounded-full bg-brand/20 px-2 py-0.5 font-semibold text-[#8a4f12]">
+                        Prior study
+                      </span>
+                      <span className="min-w-0 truncate font-medium">{prior.join(", ")}</span>
+                    </button>
+                  ) : (
+                    <span className="mt-1.5 flex items-center gap-2 rounded-lg border-l-[3px] border-brand bg-brand/10 px-2 py-1.5 text-xs text-ink">
+                      <span className="shrink-0 rounded-full bg-brand/20 px-2 py-0.5 font-semibold text-[#8a4f12]">
+                        Prior study
+                      </span>
+                      <span className="min-w-0 truncate font-medium">{prior.join(", ")}</span>
+                    </span>
+                  )
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <EmptyListNote text="No matches" />
+      )}
+    </div>
+  );
+}
+
+/** Result of an assessor ANZSCO check (read-only; same card style as the occupation cards). */
+function CheckResultCard({
+  check,
+  onClose,
+  onShowPriorStudy,
+}: {
+  check: OccupationCheck;
+  onClose: () => void;
+  onShowPriorStudy?: () => void;
+}) {
+  const c = check.candidate;
+  const conf = confidenceBadge(c.confidence);
+  const tier1 = groupMatchedByRubric(c.matches, "tier1");
+  const tier2 = groupMatchedByRubric(c.matches, "tier2");
+  return (
+    <div className="mt-4 rounded-2xl border border-line bg-surface p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                suggestionBadge(c)?.className ??
+                (c.recommended ? "bg-success-soft text-success" : "bg-surface-tint text-ink-muted")
+              }`}
+            >
+              {suggestionBadge(c)?.label ?? (c.recommended ? "Would be recommended" : "Not recommended")}
+            </span>
+            {conf ? (
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${conf.className}`}>
+                {conf.label}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 break-words text-base font-semibold leading-snug text-ink">
+            {c.title}
+            <span className="font-mono tabular-nums"> · {c.anzscoCode}</span>
+          </p>
+          {c.track ? <p className="mt-0.5 text-xs text-ink-muted">{TRACK_SHORT[c.track]}</p> : null}
+          <DraftspersonPathNote c={c} />
+        </div>
+        <div className="flex shrink-0 items-start gap-2">
+          <p className="font-mono text-2xl font-semibold tabular-nums text-brand-deeper">
+            {formatAdjustedPct(resolveConfidenceScore(c))}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close check"
+            className={`rounded-full p-1.5 text-ink-muted transition hover:bg-surface-subtle hover:text-ink ${FOCUS_RING}`}
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      {!check.trackOpen ? (
+        <p className="mt-3 rounded-lg bg-[var(--warning-soft)] px-3 py-2 text-sm text-[var(--warning-ink)]">
+          Gate 1 didn&apos;t open the {check.trackLabel ?? "occupation's"} track for this case.
+        </p>
+      ) : null}
+      <CandidateMetrics c={c} className="mt-3 grid gap-x-5 gap-y-1 text-xs text-ink-muted sm:grid-cols-3" />
+      {c.vocational ? null : (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <CheckTierList
+            title="Tier 1 · Foundational"
+            coverage={coverageLabel(c.foundationalMatched, c.foundationalExpected, c.foundationalPct)}
+            groups={tier1}
+            onShowPriorStudy={onShowPriorStudy}
+          />
+          <CheckTierList
+            title="Tier 2 · Core"
+            coverage={coverageLabel(c.coreMatched, c.coreExpected, c.corePct)}
+            groups={tier2}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Picker id of Engineering Manager (133211): opens its own check, never a suggestion. */
+const ENGINEERING_MANAGER_ID = "engineering-manager";
+
+/** Always-on assessor check: score any ANZSCO on the saved subjects (nothing is saved). Opens in a popup. */
+function AnzscoCheck({
+  onCheck,
+  onEngineeringManager,
+  onShowPriorStudy,
+}: {
+  onCheck: (occupationId: string) => Promise<OccupationCheck>;
+  onEngineeringManager?: (answers?: EmAnswers) => Promise<EngineeringManagerResult>;
+  onShowPriorStudy?: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<OccupationCheck | null>(null);
+  const [emOpen, setEmOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pickerKey, setPickerKey] = useState(0);
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  function close() {
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    dialogRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Let the picker close its own suggestion list first.
+      if ((e.target as HTMLElement | null)?.getAttribute?.("aria-expanded") === "true") return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  async function run(occupationId: string) {
+    setError(null);
+    if (occupationId === ENGINEERING_MANAGER_ID && onEngineeringManager) {
+      // Engineering Manager has its own check (answers + five requirements).
+      setResult(null);
+      setEmOpen(true);
+      return;
+    }
+    setEmOpen(false);
+    setBusy(true);
+    try {
+      setResult(await onCheck(occupationId));
+    } catch (err) {
+      setResult(null);
+      setError(err instanceof Error ? err.message : "Could not check this occupation.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function clear() {
+    setResult(null);
+    setEmOpen(false);
+    setError(null);
+    setPickerKey((k) => k + 1);
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-1.5 text-xs font-medium text-ink transition hover:border-brand-muted hover:bg-brand-soft/50 ${FOCUS_RING}`}
+      >
+        Check an ANZSCO
+      </button>
+      {open ? (
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-[rgba(36,31,42,0.45)] p-4"
+          onClick={close}
+        >
+          <div className="flex min-h-full items-start justify-center pt-[8vh]">
+            <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="anzsco-check-title"
+              tabIndex={-1}
+              className="w-full max-w-2xl rounded-2xl border border-line bg-surface shadow-xl outline-none"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+                <h3 id="anzsco-check-title" className="text-base font-semibold text-ink">
+                  Check an ANZSCO
+                </h3>
+                <button
+                  type="button"
+                  onClick={close}
+                  className={`shrink-0 rounded-full border border-line px-3 py-1 text-xs font-medium text-ink-muted hover:bg-surface-tint ${FOCUS_RING}`}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="px-5 py-4">
+                <ManualOccupationPicker
+                  key={pickerKey}
+                  compact
+                  current={null}
+                  busy={busy}
+                  actionLabel="Check"
+                  includeCheckOnly
+                  onRun={(id) => void run(id)}
+                />
+                {error ? (
+                  <p className="mt-3 text-sm leading-snug text-[var(--warning-ink)]">{error}</p>
+                ) : null}
+                {emOpen && onEngineeringManager ? (
+                  <EngineeringManagerCheck load={onEngineeringManager} onClose={clear} />
+                ) : null}
+                {result ? (
+                  <CheckResultCard
+                    check={result}
+                    onClose={clear}
+                    onShowPriorStudy={
+                      onShowPriorStudy
+                        ? () => {
+                            setOpen(false);
+                            onShowPriorStudy();
+                          }
+                        : undefined
+                    }
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function SubjectVariantsModal({
   subjectName,
   tierLabel,
@@ -334,9 +897,6 @@ function SubjectVariantsModal({
             >
               {subjectName}
             </h3>
-            <p className="mt-1 text-xs text-ink-muted">
-              Naming variants accepted for this rubric subject
-            </p>
           </div>
           <button
             type="button"
@@ -425,6 +985,149 @@ function SubjectVariantsModal({
   );
 }
 
+/** Step 3 breakdown for unit-code occupations (e.g. 312311). */
+function VocationalBreakdown({ detail }: { detail: VocationalAssessmentDetail }) {
+  const t = detail.thresholds;
+  const pool = detail.coreMode === "pool";
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-line bg-surface-subtle px-3.5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            {pool ? "Core units (pool)" : "Core units"}
+          </p>
+          <p className="mt-1 text-sm font-medium text-ink">
+            {detail.coreMatched}/{detail.coreTotal} · {CORE_BAND_LABEL[detail.coreBand]}
+          </p>
+          <p className="mt-0.5 text-[11px] text-ink-faint">
+            No Risk {t.noRisk}–{detail.coreTotal} · Low {t.lowRisk}–{t.noRisk - 1} · Medium{" "}
+            {t.mediumRisk}–{t.lowRisk - 1} · High 0–{t.mediumRisk - 1}
+          </p>
+        </div>
+        <div className="rounded-xl border border-line bg-surface-subtle px-3.5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Electives
+          </p>
+          <p className="mt-1 text-sm font-medium text-ink">{electiveStatusLabel(detail)}</p>
+          <p className="mt-0.5 text-[11px] text-ink-faint">{detail.electiveNote}</p>
+        </div>
+        <div className="rounded-xl border border-line bg-surface-subtle px-3.5 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Qualification
+          </p>
+          <p className="mt-1 text-sm font-medium text-ink">
+            {detail.qualificationMet ? "Accepted" : "To confirm"}
+          </p>
+          <p className="mt-0.5 text-[11px] text-ink-faint">{detail.qualificationNote}</p>
+        </div>
+      </div>
+
+      {detail.flags.length ? (
+        <ul className="space-y-1 rounded-xl border border-line bg-[var(--warning-soft)] px-3.5 py-3">
+          {detail.flags.map((f, i) => (
+            <li key={`vf-${i}`} className="text-[12px] leading-snug text-[var(--warning-ink)]">
+              {f}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
+        <div className="flex h-[26rem] flex-col rounded-xl border border-line bg-surface-subtle p-3.5">
+          <h3 className="mb-3 shrink-0 text-sm font-semibold text-ink">
+            Matched core units ({detail.matchedCore.length})
+          </h3>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+            {detail.matchedCore.length ? (
+              <ul className="space-y-2">
+                {detail.matchedCore.map((m) => (
+                  <li key={`vm-${m.unitId}`} className="rounded-lg bg-surface px-2.5 py-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-medium text-ink">
+                        <span className="font-mono">{m.code}</span> — {m.title}
+                      </p>
+                      <span className="shrink-0 rounded-md bg-surface-tint px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
+                        {unitMatchLabel(m)}
+                      </span>
+                    </div>
+                    {m.matchType !== "exact" ? (
+                      <p className="mt-0.5 text-[11px] text-ink-muted">
+                        {m.note}
+                        {m.source ? (
+                          <>
+                            {" "}
+                            <a
+                              href={m.source}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline underline-offset-2"
+                            >
+                              source
+                            </a>
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyListNote text="No core units matched" />
+            )}
+          </div>
+        </div>
+
+        <div className="flex h-[26rem] flex-col rounded-xl border border-line bg-surface-subtle p-3.5">
+          <h3 className="mb-3 shrink-0 text-sm font-semibold text-ink">
+            Missing core units ({detail.missingCore.length})
+          </h3>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+            {detail.missingCore.length ? (
+              <ul className="space-y-1.5">
+                {detail.missingCore.map((u) => (
+                  <li
+                    key={`vx-${u.unitId}`}
+                    className="rounded-lg bg-surface px-2.5 py-2 text-xs text-ink-muted"
+                  >
+                    <span className="font-mono">{u.code}</span> — {u.title}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyListNote
+                text={pool ? "Core units are a pool: unmatched pool units are not listed" : "All core units found"}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="flex h-[26rem] flex-col rounded-xl border border-line bg-surface-subtle p-3.5">
+          <h3 className="mb-3 shrink-0 text-sm font-semibold text-ink">
+            Electives found ({detail.electivesFound.length})
+          </h3>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+            {detail.electivesFound.length ? (
+              <ul className="space-y-1.5">
+                {detail.electivesFound.map((e) => (
+                  <li
+                    key={`ve-${e.code}`}
+                    className="rounded-lg bg-surface px-2.5 py-2 text-xs text-ink-muted"
+                  >
+                    <span className="font-mono">{e.code}</span>
+                    {e.name ? ` — ${e.name}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyListNote text="No other unit codes on the transcript" />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function variantsEmptyMessage(catalog: RubricSubjectCatalogEntry | undefined): string {
   if (!catalog) return "Variant list not available for this subject.";
   if (!catalog.variants.length) return "No naming variants listed for this subject.";
@@ -438,20 +1141,89 @@ export function Step3Assessment({
   onBack,
   onRetry,
   onConfirmOccupation,
+  onRunManualOccupation,
+  onCheckOccupation,
+  onEngineeringManager,
 }: {
   assessment: AssessmentResult | null;
   loading: boolean;
   error: string | null;
   onBack: () => void;
+  /** Re-score the saved subjects (no transcript re-read). */
   onRetry: () => void;
   onConfirmOccupation?: (candidate: AnzscoCandidate) => void;
+  /** Gate 1 manual review: score the assessor-selected occupation. */
+  onRunManualOccupation?: (occupationId: string) => void;
+  /** Assessor check of any ANZSCO on the saved subjects (read-only). */
+  onCheckOccupation?: (occupationId: string) => Promise<OccupationCheck>;
+  /** Engineering Manager check in the Check an ANZSCO popup (answers saved on the case). */
+  onEngineeringManager?: (answers?: EmAnswers) => Promise<EngineeringManagerResult>;
 }) {
   const candidates = useMemo(
     () => (assessment ? candidatesFromAssessment(assessment) : []),
     [assessment],
   );
 
+  // Family rules (API): primary first, alternatives by adjusted confidence.
+  const family = assessment?.familyAdjustment ?? null;
+  const adjByCode = useMemo(
+    () => new Map((family?.occupations ?? []).map((o) => [o.anzscoCode, o])),
+    [family],
+  );
+  const recommendedCandidate = useMemo(() => {
+    if (!candidates.length) return null;
+    const recommended = candidates.filter((c) => c.recommended);
+    const pool = recommended.length ? recommended : candidates;
+    return [...pool].sort(
+      (a, b) => resolveConfidenceScore(b) - resolveConfidenceScore(a),
+    )[0] ?? null;
+  }, [candidates]);
+  const primaryCandidate = useMemo(
+    () =>
+      (family ? candidates.find((c) => c.anzscoCode === family.primaryCode) : null) ??
+      recommendedCandidate,
+    [family, candidates, recommendedCandidate],
+  );
+  const alternativeCandidates = useMemo(() => {
+    if (!primaryCandidate) return [];
+    // ET shown once, as the Maybe Suitable card.
+    const etCode = family?.maybeSuitable?.inCandidates
+      ? family.maybeSuitable.anzscoCode
+      : null;
+    const order = new Map((family?.occupations ?? []).map((o, i) => [o.anzscoCode, i]));
+    const listed = new Map(candidates.map((c, i) => [c.anzscoCode, i]));
+    return candidates
+      .filter((c) => c.anzscoCode !== primaryCandidate.anzscoCode && c.anzscoCode !== etCode)
+      .sort((a, b) => {
+        if (a.suggestionStatus && b.suggestionStatus) {
+          return (listed.get(a.anzscoCode) ?? 99) - (listed.get(b.anzscoCode) ?? 99);
+        }
+        return (order.get(a.anzscoCode) ?? 99) - (order.get(b.anzscoCode) ?? 99);
+      });
+  }, [family, candidates, primaryCandidate]);
+
+  // Top matches grid layout (UI only). Primary in column 1; alternatives and
+  // ET (Maybe Suitable) fill columns 2-3. With alternatives + ET, the primary
+  // spans both rows and the last card spans columns 2-3 underneath.
+  const hasMaybeSuitable = Boolean(family?.maybeSuitable);
+  const secondaryCount = alternativeCandidates.length + (hasMaybeSuitable ? 1 : 0);
+  /** Primary + 1 alternative + ET: alternative on top, ET below, both spanning cols 2-3. */
+  const stackSecondaries = hasMaybeSuitable && alternativeCandidates.length === 1;
+  const primarySpansRows = secondaryCount >= 3 || stackSecondaries;
+  /** Index of an alternative that spans cols 2-3 on the second row (3 alternatives, no ET). */
+  const wideAlternativeIndex =
+    stackSecondaries ? 0 : !hasMaybeSuitable && secondaryCount === 3 ? 2 : -1;
+
   const [viewingCode, setViewingCode] = useState<string | null>(null);
+  const [priorOpen, setPriorOpen] = useState(false);
+  const showPriorStudy = () => {
+    setPriorOpen(true);
+    requestAnimationFrame(() =>
+      document
+        .getElementById(PRIOR_STUDY_SECTION_ID)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  };
   const [confirmedCode, setConfirmedCode] = useState<string | null>(null);
   const [detailSubject, setDetailSubject] = useState<{
     name: string;
@@ -468,14 +1240,31 @@ export function Step3Assessment({
     setViewingCode((prev) =>
       prev && candidates.some((c) => c.anzscoCode === prev)
         ? prev
-        : candidates[0]!.anzscoCode,
+        : (primaryCandidate ?? candidates[0]!).anzscoCode,
     );
     setConfirmedCode(null);
     setDetailSubject(null);
-  }, [candidates]);
+  }, [candidates, primaryCandidate]);
 
+  const gateBlocked = isGateBlocked(assessment);
+  // "Check an ANZSCO" button + popup: sits on the Top matches header (or alone at the top when that is hidden).
+  const anzscoCheck =
+    assessment &&
+    onCheckOccupation &&
+    !(assessment.gate1?.result === "manual_review" && onRunManualOccupation) ? (
+      <AnzscoCheck
+        onCheck={onCheckOccupation}
+        onEngineeringManager={onEngineeringManager}
+        onShowPriorStudy={
+          assessment.lateralEntry?.priorSubjects?.length ? showPriorStudy : undefined
+        }
+      />
+    ) : null;
   const selected =
-    candidates.find((c) => c.anzscoCode === viewingCode) ?? candidates[0] ?? null;
+    candidates.find((c) => c.anzscoCode === viewingCode) ??
+    primaryCandidate ??
+    candidates[0] ??
+    null;
 
   const matchedTier1 = useMemo(
     () => groupMatchedByRubric(selected?.matches ?? [], "tier1"),
@@ -551,15 +1340,6 @@ export function Step3Assessment({
   const matchedWorkJobs =
     selectedWorkAnalysis?.matchedJobs?.filter((j) => j.title) ?? [];
 
-  const recommendedCandidate = useMemo(() => {
-    if (!candidates.length) return null;
-    const recommended = candidates.filter((c) => c.recommended);
-    const pool = recommended.length ? recommended : candidates;
-    return [...pool].sort(
-      (a, b) => resolveConfidenceScore(b) - resolveConfidenceScore(a),
-    )[0] ?? null;
-  }, [candidates]);
-
   const detailCatalog = detailSubject
     ? catalogByName.get(detailSubject.name)
     : undefined;
@@ -578,21 +1358,15 @@ export function Step3Assessment({
         <h1 className="text-[1.75rem] font-semibold tracking-tight text-ink">
           ANZSCO matching
         </h1>
-        <p className="mt-2 max-w-2xl text-[0.95rem] leading-relaxed text-ink-muted">
-          Transcript subjects matched against occupation rubrics. Counts and
-          percentages are raw coverage — not a risk determination. Click a
-          subject to inspect naming variants.
-        </p>
       </header>
 
       {loading ? (
-        <div className="rounded-2xl border border-line bg-surface/95 p-8 text-center">
+        <div className="rounded-2xl border border-line bg-card p-8 text-center">
           <p className="text-sm font-medium text-ink">
-            Running subject matching…
+            Matching subjects against ANZSCO rubrics
           </p>
           <p className="mt-2 text-xs text-ink-muted">
-            Extracting subjects and comparing against ANZSCO rubrics. This may
-            take a minute.
+            Uses the subjects saved in Transcript data. This may take a moment.
           </p>
         </div>
       ) : null}
@@ -612,23 +1386,30 @@ export function Step3Assessment({
 
       {assessment && !loading ? (
         <div className="space-y-4">
+          {anzscoCheck && (gateBlocked || !primaryCandidate) ? (
+            <div className="flex justify-end">{anzscoCheck}</div>
+          ) : null}
+
           <section
             aria-label="Extracted subjects"
-            className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
+            className="rounded-2xl border border-line bg-card p-4 sm:p-5"
           >
             <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
-                  Extracted subjects
-                </p>
-                <p className="mt-1 text-sm text-ink-muted">
-                  Subject names returned by the LLM from the transcript
-                </p>
-              </div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+                Extracted subjects
+              </p>
               <p className="text-xs font-medium tabular-nums text-ink-faint">
                 {(assessment.extractedSubjects ?? []).length} subjects
               </p>
             </div>
+            {assessment.extraction?.partial ? (
+              <p
+                role="status"
+                className="mb-3 w-fit rounded-xl bg-[#fff7ed] px-3 py-1.5 text-xs text-[#b45309] ring-1 ring-[#fdba74]/60"
+              >
+                Some pages couldn&apos;t be read. Retry the read in Transcript data.
+              </p>
+            ) : null}
             {(assessment.extractedSubjects ?? []).length ? (
               <ul className="grid max-h-64 gap-1.5 overflow-y-auto overscroll-contain sm:grid-cols-2 [scrollbar-gutter:stable]">
                 {(assessment.extractedSubjects ?? []).map((s, i) => (
@@ -655,145 +1436,277 @@ export function Step3Assessment({
             )}
           </section>
 
-          {recommendedCandidate ? (
+          {assessment.lateralEntry?.priorSubjects?.length ? (
+            <PriorStudySubjects
+              names={assessment.lateralEntry.priorSubjects}
+              source={
+                assessment.lateralEntry.priorDocuments
+                  .map((d) => d.name)
+                  .filter(Boolean)
+                  .join(", ") || null
+              }
+              matches={selected?.matches ?? []}
+              open={priorOpen}
+              onToggle={() => setPriorOpen((v) => !v)}
+            />
+          ) : null}
+
+          {assessment.gate1 ? <Gate1Box gate={assessment.gate1} /> : null}
+
+          {!(assessment.qualificationEvidence && !gateBlocked) ? (
+            <LateralEntryLine view={assessment.lateralEntry} />
+          ) : null}
+
+          {assessment.gate1?.result === "manual_review" && onRunManualOccupation ? (
+            <ManualOccupationPicker
+              key={assessment.assessorSelected?.occupationId ?? "none"}
+              current={assessment.assessorSelected}
+              busy={loading}
+              onRun={onRunManualOccupation}
+            />
+          ) : null}
+
+
+          {!assessment.gate1 && assessment.routing?.note ? (
             <section
-              aria-label="Recommended occupation"
-              className="rounded-xl border border-success-line bg-success-soft px-4 py-3"
+              aria-label="Qualification route"
+              className="rounded-xl border border-line bg-card px-4 py-2.5"
             >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-success">
-                    {recommendedCandidate.recommended
-                      ? "Recommended"
-                      : "Best coverage"}
-                  </p>
-                  <p className="mt-1 text-sm leading-snug text-ink">
-                    {recommendationSummary(recommendedCandidate)}
-                  </p>
-                </div>
-                <p className="shrink-0 font-mono text-sm font-semibold tabular-nums text-success">
-                  {formatConfidencePct(
-                    resolveConfidenceScore(recommendedCandidate),
-                  )}
-                </p>
-              </div>
+              <p className="text-sm leading-snug text-ink">{assessment.routing.note}</p>
+              {assessment.routing.notes.length ? (
+                <ul className="mt-1 space-y-0.5">
+                  {assessment.routing.notes.map((note, i) => (
+                    <li key={`route-${i}`} className="text-[12px] leading-snug text-ink-muted">
+                      {note}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </section>
           ) : null}
 
-          {/* 1. Top candidates — bento comparison row */}
-          <section aria-label="Top ANZSCO candidates">
-            <div className="mb-2 flex items-center justify-between gap-3">
+          {assessment.qualificationEvidence && !gateBlocked ? (
+            <QualificationEvidenceBox
+              evidence={assessment.qualificationEvidence}
+              lateralEntry={assessment.lateralEntry}
+            />
+          ) : null}
+
+          {/* 1. Suggested ANZSCOs — primary (large) + alternatives (small) + ET Maybe Suitable */}
+          {!gateBlocked && primaryCandidate ? (
+          <section aria-label="Suggested ANZSCO occupations" className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                 Top matches
               </p>
-              <p className="text-[11px] text-ink-faint">
-                Select a card to inspect its breakdown
-              </p>
+              {anzscoCheck}
             </div>
             <div
-              className={`grid gap-3 ${
-                candidates.length >= 3
-                  ? "md:grid-cols-3"
-                  : candidates.length === 2
-                    ? "md:grid-cols-2"
-                    : "md:grid-cols-1"
+              className={`grid w-full gap-3 ${
+                secondaryCount >= 2
+                  ? `md:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr] ${
+                      primarySpansRows ? "lg:grid-rows-[auto_1fr]" : ""
+                    }`
+                  : secondaryCount === 1
+                    ? "lg:grid-cols-[1.3fr_2fr]"
+                    : ""
               }`}
             >
-              {candidates.map((c, rank) => {
-                const active = selected?.anzscoCode === c.anzscoCode;
-                const conf = confidenceBadge(
-                  c.confidence ??
-                    (rank === 0 ? assessment.confidence : null),
-                );
-                const score = resolveConfidenceScore(c);
-                const isTopRec =
-                  recommendedCandidate?.anzscoCode === c.anzscoCode &&
-                  c.recommended;
-                return (
-                  <button
-                    key={c.anzscoCode}
-                    type="button"
-                    onClick={() => setViewingCode(c.anzscoCode)}
-                    className={`rounded-2xl border p-4 text-left transition ${
-                      active
-                        ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
-                        : "border-line bg-surface/95 hover:border-line-strong"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-mono text-[11px] tabular-nums text-ink-muted">
-                          #{rank + 1} · {c.anzscoCode}
-                        </p>
-                        <p className="mt-0.5 truncate text-sm font-semibold text-ink">
-                          {c.title}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        {isTopRec ? (
-                          <span className="rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-medium text-success">
-                            Recommended
+            {(() => {
+              const c = primaryCandidate;
+              const active = selected?.anzscoCode === c.anzscoCode;
+              const conf = confidenceBadge(c.confidence ?? assessment.confidence);
+              const primaryScore =
+                family?.primaryConfidence ?? resolveConfidenceScore(c);
+              return (
+                <button
+                  type="button"
+                  onClick={() => setViewingCode(c.anzscoCode)}
+                  className={`w-full min-w-0 rounded-2xl border p-4 text-left transition ${
+                    secondaryCount >= 2 ? "md:col-span-2 lg:col-span-1" : ""
+                  } ${primarySpansRows ? "lg:row-span-2" : ""} ${
+                    active
+                      ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
+                      : "border-line bg-card hover:border-line-strong"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            suggestionBadge(c)?.className ??
+                            (c.recommended
+                              ? "bg-success-soft text-success"
+                              : "bg-surface-tint text-ink-muted")
+                          }`}
+                        >
+                          {suggestionBadge(c)?.label ??
+                            (c.recommended ? "Recommended" : "Best coverage · not recommended")}
+                        </span>
+                        {assessment.assessorSelected ? (
+                          <span className="rounded-full bg-surface-tint px-2 py-0.5 text-[10px] font-medium text-ink-muted">
+                            Assessor-selected occupation
+                          </span>
+                        ) : null}
+                        {conf ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${conf.className}`}
+                          >
+                            {conf.label}
                           </span>
                         ) : null}
                       </div>
+                      <p className="mt-2 break-words text-base font-semibold leading-snug text-ink">
+                        {c.title}
+                        <span className="font-mono tabular-nums"> · {c.anzscoCode}</span>
+                      </p>
+                      {c.track ? (
+                        <p className="mt-0.5 text-[11px] text-ink-faint">{TRACK_SHORT[c.track]}</p>
+                      ) : null}
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                      <span className="rounded-md bg-brand-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-brand-deeper">
-                        {formatConfidencePct(score)}
-                      </span>
-                      {conf ? (
-                        <span
-                          className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${conf.className}`}
-                        >
-                          {conf.label}
-                        </span>
-                      ) : (
-                        <span className="rounded-md bg-surface-tint px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
-                          Not recommended
-                        </span>
-                      )}
-                    </div>
-                    <dl className="mt-3 space-y-1.5 text-xs text-ink-muted">
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-ink-muted">Tier 1</dt>
-                        <dd className="font-mono tabular-nums">
-                          {coverageLabel(
-                            c.foundationalMatched,
-                            c.foundationalExpected,
-                            c.foundationalPct,
-                          )}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-ink-muted">Tier 2</dt>
-                        <dd className="font-mono tabular-nums">
-                          {coverageLabel(
-                            c.coreMatched,
-                            c.coreExpected,
-                            c.corePct,
-                          )}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-ink-muted">Capstone</dt>
-                        <dd>
-                          {c.tier3GateMet
-                            ? "Capstone found"
-                            : "Capstone not found"}
-                        </dd>
-                      </div>
-                    </dl>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+                    <p className="shrink-0 font-mono text-2xl font-semibold tabular-nums text-brand-deeper">
+                      {formatAdjustedPct(primaryScore)}
+                    </p>
+                  </div>
+                  <CandidateMetrics
+                    c={c}
+                    className={`mt-3 grid gap-x-5 gap-y-1 text-xs text-ink-muted ${
+                      secondaryCount >= 2 ? "sm:grid-cols-2 lg:grid-cols-1" : "sm:grid-cols-2"
+                    }`}
+                  />
+                </button>
+              );
+            })()}
 
-          {selected ? (
+            {alternativeCandidates.map((c, altIndex) => {
+                  const active = selected?.anzscoCode === c.anzscoCode;
+                  const adj = adjByCode.get(c.anzscoCode);
+                  const shown = adj?.adjustedConfidence ?? resolveConfidenceScore(c);
+                  return (
+                    <button
+                      key={c.anzscoCode}
+                      type="button"
+                      onClick={() => setViewingCode(c.anzscoCode)}
+                      className={`min-w-0 self-start rounded-xl border px-3 py-2.5 text-left transition ${
+                        altIndex === wideAlternativeIndex
+                          ? "md:col-span-2"
+                          : ""
+                      } ${
+                        active
+                          ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
+                          : "border-line bg-card hover:border-line-strong"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-mono text-[10px] tabular-nums text-ink-muted">
+                            {c.anzscoCode}
+                          </p>
+                          <p className="mt-0.5 line-clamp-2 break-words text-[13px] font-medium leading-snug text-ink">
+                            {c.title}
+                          </p>
+                          {suggestionBadge(c) ? (
+                            <span
+                              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${suggestionBadge(c)!.className}`}
+                            >
+                              {suggestionBadge(c)!.label}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="shrink-0 font-mono text-[13px] font-semibold tabular-nums text-ink">
+                          {formatAdjustedPct(shown)}
+                        </p>
+                      </div>
+                      {adj?.changed ? (
+                        <p className="mt-1 text-[10px] leading-snug text-ink-muted">
+                          <span className="font-mono tabular-nums">
+                            {formatAdjustedPct(adj.originalConfidence)} →{" "}
+                            {formatAdjustedPct(adj.adjustedConfidence)}
+                          </span>
+                          <span className="text-ink-faint"> · {adj.reason}</span>
+                        </p>
+                      ) : null}
+                      <CandidateMetrics c={c} compact className="mt-1.5 space-y-0.5 text-[10px] text-ink-muted" />
+                    </button>
+                  );
+                })}
+            {family?.maybeSuitable ? (
+              (() => {
+                const et = family.maybeSuitable;
+                const etCandidate = et.inCandidates
+                  ? candidates.find((c) => c.anzscoCode === et.anzscoCode) ?? null
+                  : null;
+                const active = etCandidate && selected?.anzscoCode === etCandidate.anzscoCode;
+                // Wide card (cols 2-3): title + code left, pill + confidence right.
+                const tierLine = et.tiers ? etTierLine(et.tiers) : null;
+                const head = (
+                  <div className="flex w-full items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-mono text-[10px] tabular-nums text-ink-muted">
+                        {et.anzscoCode}
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 break-words text-[13px] font-medium leading-snug text-ink">
+                        {et.title}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="rounded-full bg-[var(--warning-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--warning-ink)]">
+                        {et.label}
+                      </span>
+                      <p className="font-mono text-[13px] font-semibold tabular-nums text-ink">
+                        {formatAdjustedPct(et.adjustedConfidence)}
+                      </p>
+                    </div>
+                  </div>
+                );
+                const body = tierLine ? (
+                  <div className="w-full min-w-0">
+                    {head}
+                    <p
+                      className="mt-1.5 truncate text-xs tabular-nums text-ink-muted"
+                      title={tierLine.detail}
+                    >
+                      {tierLine.summary}
+                    </p>
+                  </div>
+                ) : (
+                  head
+                );
+                const cls = `flex min-w-0 items-center rounded-xl border px-3 py-2.5 text-left transition ${
+                  secondaryCount >= 2 ? "md:col-span-2 lg:col-start-2" : ""
+                } ${primarySpansRows ? "self-stretch" : "self-start"} ${
+                  active
+                    ? "border-brand bg-surface shadow-[0_0_0_1px_var(--brand)]"
+                    : "border-line bg-card"
+                }`;
+                return etCandidate ? (
+                  <button
+                    type="button"
+                    onClick={() => setViewingCode(etCandidate.anzscoCode)}
+                    className={`${cls} ${active ? "" : "hover:border-line-strong"}`}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <div className={cls}>{body}</div>
+                );
+              })()
+            ) : null}
+            </div>
+
+          </section>
+          ) : null}
+
+          {assessment.specialisation && !gateBlocked ? (
+            <SpecialisationCard result={assessment.specialisation} />
+          ) : null}
+
+          {selected && !gateBlocked ? (
             <>
               {/* Meta strip: source + work experience + confidence */}
               <div className="grid gap-3 md:grid-cols-3">
-                <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+                <section className="rounded-2xl border border-line bg-surface-tint px-4 py-3.5">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                     Transcript source
                   </p>
@@ -801,7 +1714,7 @@ export function Step3Assessment({
                     {transcriptSourceLabel(assessment)}
                   </p>
                 </section>
-                <section className="rounded-2xl border border-line bg-surface/95 px-4 py-3.5">
+                <section className="rounded-2xl border border-line bg-surface-tint px-4 py-3.5">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                     Confidence
                   </p>
@@ -810,7 +1723,13 @@ export function Step3Assessment({
                       ? `${formatConfidencePct(selectedScore)}${
                           selectedConfidence
                             ? ` · ${selectedConfidence.label}`
-                            : " · Not recommended"
+                            : selected?.suggestionStatus === "eligible"
+                              ? " · Eligible"
+                              : selected?.suggestionStatus === "rejected"
+                                ? " · Rejected"
+                                : selected?.suggestionStatus === "review"
+                                  ? " · Review"
+                                  : " · Not recommended"
                         }`
                       : selectedConfidence
                         ? selectedConfidence.label
@@ -869,17 +1788,41 @@ export function Step3Assessment({
                       {selectedWorkAnalysis.analysis}
                     </p>
                   ) : null}
-                  <p className="mt-1.5 text-[11px] text-ink-faint">
-                    From confirmed work on the case — separate from Tier 1 /
-                    Tier 2 coverage
-                  </p>
                 </section>
               </div>
+
+              {selected.qualificationNotes?.length ? (
+                <section
+                  aria-label="Qualification check"
+                  className="rounded-2xl border border-line bg-[var(--warning-soft)] px-4 py-3.5"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--warning-ink)]">
+                    Qualification check
+                    {selected.qualificationCapped
+                      ? " · capped at conditional"
+                      : ""}
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {selected.qualificationNotes.map((note, i) => (
+                      <li
+                        key={`${i}-${note}`}
+                        className="text-sm leading-snug text-[var(--warning-ink)]"
+                      >
+                        {note}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              {assessment.associateFallback?.suggested && !gateBlocked ? (
+                <AssociateFallbackCard fallback={assessment.associateFallback} />
+              ) : null}
 
               {/* 2. Full breakdown — three lists */}
               <section
                 aria-label={`Breakdown for ${selected.title}`}
-                className="rounded-2xl border border-line bg-surface/95 p-4 sm:p-5"
+                className="rounded-2xl border border-line bg-card p-4 sm:p-5"
               >
                 <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
                   <div>
@@ -889,10 +1832,6 @@ export function Step3Assessment({
                     <h2 className="mt-1 text-base font-semibold text-ink">
                       {selected.anzscoCode} — {selected.title}
                     </h2>
-                    <p className="mt-1 text-[11px] text-ink-faint">
-                      Click a subject to see matched and unmatched naming
-                      variants
-                    </p>
                   </div>
                   <button
                     type="button"
@@ -912,6 +1851,9 @@ export function Step3Assessment({
                   </button>
                 </div>
 
+                {selected.vocational ? (
+                  <VocationalBreakdown detail={selected.vocational} />
+                ) : (
                 <div className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
                   {/* Matched */}
                   <div className="flex h-[26rem] flex-col rounded-xl border border-line bg-surface-subtle p-3.5">
@@ -919,9 +1861,6 @@ export function Step3Assessment({
                       <h3 className="text-sm font-semibold text-ink">
                         Matched subjects
                       </h3>
-                      <p className="mt-0.5 text-[11px] text-ink-muted">
-                        Rubric topics covered by the transcript
-                      </p>
                     </div>
 
                     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
@@ -949,16 +1888,49 @@ export function Step3Assessment({
                                     <p className="text-xs font-medium text-ink">
                                       {g.rubricSubject}
                                     </p>
-                                    <p className="mt-0.5 text-[11px] text-ink-muted">
-                                      {g.hits.length === 1
-                                        ? `from ${g.hits[0]!.transcriptName}`
-                                        : `${g.hits.length} transcript subjects`}
-                                    </p>
-                                    <span
-                                      className={`mt-1.5 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}
-                                    >
-                                      {badge.label}
+                                    {g.hits.every((h) => h.priorStudy) ? null : (
+                                      <p className="mt-0.5 text-[11px] text-ink-muted">
+                                        {g.hits.length === 1
+                                          ? `from ${g.hits[0].transcriptName}`
+                                          : `${g.hits.length} transcript subjects`}
+                                      </p>
+                                    )}
+                                    <span className="mt-1.5 flex flex-wrap items-center gap-1">
+                                      <span
+                                        className={`inline-block rounded-md px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}
+                                      >
+                                        {badge.label}
+                                      </span>
                                     </span>
+                                    {g.hits.some((h) => h.priorStudy) ? (
+                                      <span
+                                        role="button"
+                                        tabIndex={0}
+                                        title="Show prior study subjects"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          showPriorStudy();
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            showPriorStudy();
+                                          }
+                                        }}
+                                        className={`mt-2 flex w-full items-center gap-2 rounded-lg border-l-[3px] border-brand bg-brand/10 px-2 py-1.5 text-xs text-ink transition hover:bg-brand/20 ${FOCUS_RING}`}
+                                      >
+                                        <span className="shrink-0 rounded-full bg-brand/20 px-2 py-0.5 font-semibold text-[#8a4f12]">
+                                          Prior study
+                                        </span>
+                                        <span className="min-w-0 truncate font-medium">
+                                          {g.hits
+                                            .filter((h) => h.priorStudy)
+                                            .map((h) => h.transcriptName)
+                                            .join(", ")}
+                                        </span>
+                                      </span>
+                                    ) : null}
                                   </button>
                                 </li>
                               );
@@ -1021,9 +1993,6 @@ export function Step3Assessment({
                       <h3 className="text-sm font-semibold text-ink">
                         Missing subjects
                       </h3>
-                      <p className="mt-0.5 text-[11px] text-ink-muted">
-                        Rubric subjects not covered — click for variants
-                      </p>
                     </div>
 
                     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
@@ -1087,9 +2056,6 @@ export function Step3Assessment({
                       <h3 className="text-sm font-semibold text-ink">
                         Unclassified subjects
                       </h3>
-                      <p className="mt-0.5 text-[11px] text-ink-muted">
-                        Informational — not counted in coverage
-                      </p>
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
                       {unclassified.length ? (
@@ -1109,6 +2075,7 @@ export function Step3Assessment({
                     </div>
                   </div>
                 </div>
+                )}
               </section>
 
               {confirmedCode ? (
@@ -1162,4 +2129,18 @@ export function Step3Assessment({
       </div>
     </div>
   );
+}
+
+/** One-line Tier 1 / Tier 2 / project summary for the ET (Maybe Suitable) card. */
+function etTierLine(d: EtTierDetail): { summary: string; detail: string } {
+  const parts: string[] = [];
+  const detail: string[] = [];
+  for (const t of d.tiers) {
+    const name = t.tier === "tier1" ? "Tier 1" : t.tier === "tier2" ? "Tier 2" : "Project";
+    if (t.tier === "tier3") parts.push(`${name} ${d.gateMet ? "found" : "missing"}`);
+    else parts.push(`${name} ${t.matched}/${t.expected ?? t.rows.length}`);
+    const hit = t.rows.filter((r) => r.matched).map((r) => r.name);
+    detail.push(`${name} – ${t.label}: ${hit.length ? hit.join(", ") : "none matched"}`);
+  }
+  return { summary: parts.join(" · "), detail: detail.join("\n") };
 }

@@ -2,14 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  checkAssessOccupation,
+  getEngineeringManagerCheck,
+  saveEngineeringManagerAnswers,
   createCase,
   deleteDocument,
+  extractTranscriptData,
   getCase,
   getRiskAssessment,
+  getTranscriptData,
   patchRiskCompetence,
   runAssessment,
   runRiskAssessment,
   saveDraft,
+  saveTranscriptOverrides,
   setEngineeringTitledDegree,
   setOccupation,
   setSelectedDegreeLevels,
@@ -18,8 +24,12 @@ import {
   uploadDocument,
 } from "@/lib/api";
 import {
+  AWARD_LEVEL_FIELD,
+  AWARD_LEVEL_OPTIONS,
   DEGREE_LEVEL_LABELS,
   DEGREE_LEVEL_ORDER,
+  FIELD_OF_STUDY_FIELD,
+  awardOptionLabel,
   UNCERTAIN_THRESHOLD,
   emptyExperience,
   emptyQualification,
@@ -36,6 +46,9 @@ import {
   type ExperienceRow,
   type FieldSource,
   type RiskAssessmentResult,
+  type TranscriptDataSummary,
+  type TranscriptOverrides,
+  type AwardLevel,
 } from "@/lib/types";
 import { CaseWizardLayout } from "@/components/wizard/CaseWizardLayout";
 import { CareerEpisodesSection } from "@/components/wizard/CareerEpisodesSection";
@@ -50,7 +63,11 @@ import {
   SectionHeader,
   UploadTile,
 } from "@/components/wizard/UploadTile";
-import { Step2Confirmation } from "@/components/wizard/Step2Confirmation";
+import {
+  Step2Confirmation,
+  type DurationCorrection,
+} from "@/components/wizard/Step2Confirmation";
+import { Step2TranscriptData } from "@/components/wizard/Step2TranscriptData";
 import { Step3Assessment } from "@/components/wizard/Step3Assessment";
 import { Step4Risk } from "@/components/wizard/Step4Risk";
 import { Step5FinalReview } from "@/components/wizard/Step5FinalReview";
@@ -62,6 +79,82 @@ import {
 
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,.docx,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MAX_BYTES = 10 * 1024 * 1024;
+
+/** Body for PUT /cases/:id/draft from the current form state. */
+function buildDraftBody(
+  selectedLevels: DegreeLevel[],
+  qualifications: Partial<Record<DegreeLevel, Bachelors>>,
+  experience: ExperienceRow[],
+  fieldSources: FieldSource[],
+  engineeringTitledDegree: boolean | null,
+) {
+  const levels = sortDegreeLevels(selectedLevels);
+  const quals = levels.map((level) => {
+    const q = qualifications[level] ?? emptyQualification();
+    return {
+      degreeLevel: level,
+      degreeTitle: q.degreeTitle || null,
+      institution: q.institution || null,
+      country: q.country || null,
+    };
+  });
+  const bachelor = quals.find((q) => q.degreeLevel === "bachelor");
+  return {
+    qualifications: quals,
+    bachelors: bachelor
+      ? {
+          degreeTitle: bachelor.degreeTitle,
+          institution: bachelor.institution,
+          country: bachelor.country,
+        }
+      : undefined,
+    experienceRows: experience.map((r) => ({
+      ...r,
+      employer: r.employer || null,
+      title: r.title || null,
+      start: r.start || null,
+      end: r.end || null,
+      domainSuggested: r.domainSuggested ?? null,
+      domainFinal: r.domainFinal ?? null,
+    })),
+    engineeringTitledDegree,
+    fieldFinalEntries: fieldSources
+      .filter((f) => f.degreeLevel)
+      .map((f) => ({
+        field: f.field,
+        degreeLevel: f.degreeLevel as DegreeLevel,
+        finalValue: f.finalValue,
+      })),
+  };
+}
+
+/** Set (or add) a FieldSource final value for one level. */
+function withFieldFinal(
+  fieldSources: FieldSource[],
+  degreeLevel: DegreeLevel,
+  field: string,
+  finalValue: string | null,
+): FieldSource[] {
+  const exists = fieldSources.some((f) => f.field === field && f.degreeLevel === degreeLevel);
+  if (exists) {
+    return fieldSources.map((f) =>
+      f.field === field && f.degreeLevel === degreeLevel ? { ...f, finalValue } : f,
+    );
+  }
+  return [
+    ...fieldSources,
+    {
+      id: `${degreeLevel}:${field}`,
+      field,
+      degreeLevel,
+      sourceDocumentId: null,
+      extractedValue: null,
+      finalValue,
+      confidence: null,
+      alternatives: [],
+    },
+  ];
+}
 
 export default function Home() {
   const [caseId, setCaseId] = useState<string | null>(null);
@@ -75,6 +168,9 @@ export default function Home() {
   const [riskLoading, setRiskLoading] = useState(false);
   const [riskError, setRiskError] = useState<string | null>(null);
   const [competenceBusy, setCompetenceBusy] = useState(false);
+  const [transcriptData, setTranscriptData] = useState<TranscriptDataSummary | null>(null);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [selectedAnzsco, setSelectedAnzsco] = useState<{
     anzscoCode: string;
     title: string;
@@ -99,6 +195,9 @@ export default function Home() {
   const [expError, setExpError] = useState<string | null>(null);
   const [eduParseSources, setEduParseSources] = useState<
     Partial<Record<DegreeLevel, "groq" | "heuristic">>
+  >({});
+  const [eduLevelNotes, setEduLevelNotes] = useState<
+    Partial<Record<DegreeLevel, string[]>>
   >({});
   const [expParseSource, setExpParseSource] = useState<"groq" | "heuristic" | null>(
     null,
@@ -126,8 +225,6 @@ export default function Home() {
         degreeTitle: q.degreeTitle ?? "",
         institution: q.institution ?? "",
         country: q.country ?? "",
-        durationYears: q.durationYears,
-        durationCalculated: q.durationCalculated,
       };
     }
     // Legacy bachelor-only payload
@@ -136,8 +233,6 @@ export default function Home() {
         degreeTitle: row.bachelors.degreeTitle ?? "",
         institution: row.bachelors.institution ?? "",
         country: row.bachelors.country ?? "",
-        durationYears: row.bachelors.durationYears,
-        durationCalculated: row.bachelors.durationCalculated,
       };
     }
     setQualifications(nextQuals);
@@ -214,6 +309,7 @@ export default function Home() {
         setUserEditedExp(false);
         setFromCvOnlyByLevel({});
         setEduParseSources({});
+        setEduLevelNotes({});
         setExpParseSource(null);
         setEduErrors({});
         setStaleHint(false);
@@ -307,50 +403,17 @@ export default function Home() {
     };
   }, [caseId]);
 
-  const draftBody = useMemo(() => {
-    const levels = sortDegreeLevels(selectedLevels);
-    const quals = levels.map((level) => {
-      const q = qualifications[level] ?? emptyQualification();
-      return {
-        degreeLevel: level,
-        degreeTitle: q.degreeTitle || null,
-        institution: q.institution || null,
-        country: q.country || null,
-        durationYears: q.durationYears,
-        durationCalculated: q.durationCalculated,
-      };
-    });
-    const bachelor = quals.find((q) => q.degreeLevel === "bachelor");
-    return {
-      qualifications: quals,
-      bachelors: bachelor
-        ? {
-            degreeTitle: bachelor.degreeTitle,
-            institution: bachelor.institution,
-            country: bachelor.country,
-            durationYears: bachelor.durationYears,
-            durationCalculated: bachelor.durationCalculated,
-          }
-        : undefined,
-      experienceRows: experience.map((r) => ({
-        ...r,
-        employer: r.employer || null,
-        title: r.title || null,
-        start: r.start || null,
-        end: r.end || null,
-        domainSuggested: r.domainSuggested ?? null,
-        domainFinal: r.domainFinal ?? null,
-      })),
-      engineeringTitledDegree,
-      fieldFinalEntries: fieldSources
-        .filter((f) => f.degreeLevel)
-        .map((f) => ({
-          field: f.field,
-          degreeLevel: f.degreeLevel as DegreeLevel,
-          finalValue: f.finalValue,
-        })),
-    };
-  }, [selectedLevels, qualifications, experience, fieldSources, engineeringTitledDegree]);
+  const draftBody = useMemo(
+    () =>
+      buildDraftBody(
+        selectedLevels,
+        qualifications,
+        experience,
+        fieldSources,
+        engineeringTitledDegree,
+      ),
+    [selectedLevels, qualifications, experience, fieldSources, engineeringTitledDegree],
+  );
 
   useEffect(() => {
     if (!caseId || !dirty) return;
@@ -532,7 +595,12 @@ export default function Home() {
       fromCvOnly?: boolean;
       fallback?: boolean;
       flags?: string[];
+      levelMismatches?: { documentType?: string | null; awardName?: string | null }[];
     };
+    setEduLevelNotes((prev) => ({
+      ...prev,
+      [degreeLevel]: levelMismatchNotes(degreeLevel, r.levelMismatches),
+    }));
     const usedHeuristic =
       Boolean(r.fallback) ||
       (Array.isArray(r.flags) && r.flags.includes("heuristics_fallback"));
@@ -548,8 +616,6 @@ export default function Home() {
           degreeTitle: block.degreeTitle ?? "",
           institution: block.institution ?? "",
           country: block.country ?? "",
-          durationYears: block.durationYears ?? null,
-          durationCalculated: Boolean(block.durationCalculated),
         },
       }));
     }
@@ -566,7 +632,8 @@ export default function Home() {
           degreeLevel,
           sourceDocumentId: meta.sourceDocumentId,
           extractedValue: meta.value,
-          finalValue: meta.value,
+          // Award level: null = detect from the degree title (follows title edits).
+          finalValue: field === AWARD_LEVEL_FIELD ? null : meta.value,
           confidence: meta.confidence,
           alternatives: meta.alternatives ?? [],
         }));
@@ -629,33 +696,107 @@ export default function Home() {
     setDirty(true);
   }
 
-  async function goToStep2() {
-    // Existing Step 1 confirmation had no required-field validation — preserve that.
-    if (caseId) {
-      try {
-        await saveDraft(caseId, draftBody);
-        setDirty(false);
-      } catch {
-        // Still allow navigation; autosave may retry from Step 2 edits.
-      }
+  async function saveDraftNow() {
+    if (!caseId) return;
+    await saveDraft(caseId, draftBody);
+    setDirty(false);
+  }
+
+  /** Step 2: read transcript data (subjects are reused when already read). */
+  async function loadTranscriptData(mode: "extract" | "read", force = false) {
+    if (!caseId) return;
+    setTranscriptError(null);
+    setTranscriptLoading(true);
+    try {
+      const data =
+        mode === "extract"
+          ? await extractTranscriptData(caseId, { force })
+          : await getTranscriptData(caseId);
+      setTranscriptData(data);
+    } catch (err) {
+      setTranscriptError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTranscriptLoading(false);
+    }
+  }
+
+  async function goToTranscriptStep() {
+    // Upload & details has no required-field validation — preserve that.
+    try {
+      await saveDraftNow();
+    } catch {
+      // Still allow navigation; autosave may retry.
     }
     setWizardStep(2);
     setSaveMsg(null);
+    await loadTranscriptData("extract");
   }
 
-  async function goToStep3(force = false) {
+  async function goToVerifyStep() {
+    try {
+      await saveDraftNow();
+    } catch {
+      // Still allow navigation; autosave may retry.
+    }
+    setWizardStep(3);
+    setSaveMsg(null);
+    await loadTranscriptData("read");
+  }
+
+  async function onSaveTranscriptOverrides(
+    degreeLevel: DegreeLevel,
+    patch: Partial<TranscriptOverrides>,
+  ) {
+    if (!caseId) return;
+    const data = await saveTranscriptOverrides(caseId, { degreeLevel, ...patch });
+    setTranscriptData(data);
+  }
+
+  /** Verify details: save the corrected values, then re-check the durations. */
+  async function onCorrectDuration(
+    degreeLevel: DegreeLevel,
+    correction: DurationCorrection,
+  ) {
+    if (!caseId) return;
+    if (correction.award !== undefined) {
+      const nextSources = withFieldFinal(fieldSources, degreeLevel, AWARD_LEVEL_FIELD, correction.award);
+      setFieldSources(nextSources);
+      await saveDraft(
+        caseId,
+        buildDraftBody(selectedLevels, qualifications, experience, nextSources, engineeringTitledDegree),
+      );
+      setDirty(false);
+    }
+    if (correction.countedYears !== undefined) {
+      await saveTranscriptOverrides(caseId, {
+        degreeLevel,
+        countedYears: correction.countedYears,
+      });
+    }
+    setTranscriptData(await getTranscriptData(caseId));
+  }
+
+  /**
+   * Assessment step. Scores the saved subjects only (no transcript re-read:
+   * that is Step 2's "Re-read transcripts"). `rescore` skips the cached
+   * result; `manualOccupation` saves the assessor-selected occupation for a
+   * manual-review case (null clears it) and scores it.
+   */
+  async function goToAssessmentStep(
+    opts: { rescore?: boolean; manualOccupation?: string | null } = {},
+  ) {
     if (!caseId) {
       setSaveMsg("Case not ready");
       return;
     }
-    setWizardStep(3);
+    setWizardStep(4);
     setSaveMsg(null);
     setAssessError(null);
     setAssessLoading(true);
     try {
       await saveDraft(caseId, draftBody);
       setDirty(false);
-      const result = await runAssessment(caseId, { force });
+      const result = await runAssessment(caseId, opts);
       setAssessment(result);
     } catch (err) {
       setAssessError(err instanceof Error ? err.message : String(err));
@@ -664,7 +805,7 @@ export default function Home() {
     }
   }
 
-  async function goToStep4(candidate: AnzscoCandidate) {
+  async function goToRiskStep(candidate: AnzscoCandidate) {
     if (!caseId) {
       setSaveMsg("Case not ready");
       return;
@@ -674,9 +815,11 @@ export default function Home() {
       title: candidate.title,
     };
     setSelectedAnzsco(chosen);
-    setWizardStep(4);
+    setWizardStep(5);
     setSaveMsg(null);
     setRiskError(null);
+    // The qualification blocks show the duration confirmed in Verify details.
+    if (!transcriptData && !transcriptLoading) void loadTranscriptData("read");
     setRiskLoading(true);
     try {
       const label = `${candidate.title} (${candidate.anzscoCode})`;
@@ -720,10 +863,14 @@ export default function Home() {
     }
   }
 
-  /** Steps 5–6: plain navigation (no API calls); scroll to top for long pages. */
-  function goToReviewStep(step: 4 | 5 | 6) {
+  /** Steps 6–7: plain navigation (no API calls); scroll to top for long pages. */
+  function goToReviewStep(step: 5 | 6 | 7) {
     setWizardStep(step);
     setSaveMsg(null);
+    // Final review shows the duration confirmed in Verify details.
+    if (step === 6 && !transcriptData && !transcriptLoading) {
+      void loadTranscriptData("read");
+    }
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -748,6 +895,16 @@ export default function Home() {
     return fieldSources.find(
       (f) => f.field === field && f.degreeLevel === degreeLevel,
     );
+  }
+
+  function updateFieldFinal(
+    degreeLevel: DegreeLevel,
+    field: string,
+    finalValue: string | null,
+  ) {
+    setFieldSources((prev) => withFieldFinal(prev, degreeLevel, field, finalValue));
+    setDirty(true);
+    setEditedLevels((prev) => ({ ...prev, [degreeLevel]: true }));
   }
 
   function updateQualification<K extends keyof Bachelors>(
@@ -780,7 +937,7 @@ export default function Home() {
 
   if (bootError) {
     return (
-      <div className="min-h-full bg-background px-4 py-10">
+      <div className="min-h-full px-4 py-10">
         <main className="mx-auto max-w-2xl rounded-2xl border border-line bg-surface p-6">
           <h1 className="text-lg font-semibold text-ink">Cannot reach API</h1>
           <p className="mt-2 text-sm text-ink-muted">{bootError}</p>
@@ -794,9 +951,9 @@ export default function Home() {
 
   return (
     <CaseWizardLayout currentStep={wizardStep}>
-      {wizardStep === 6 ? (
-        <Step6Approval caseId={caseId} onBack={() => goToReviewStep(5)} />
-      ) : wizardStep === 5 ? (
+      {wizardStep === 7 ? (
+        <Step6Approval caseId={caseId} onBack={() => goToReviewStep(6)} />
+      ) : wizardStep === 6 ? (
         <Step5FinalReview
           risk={risk}
           assessment={assessment}
@@ -805,10 +962,11 @@ export default function Home() {
           qualifications={qualifications}
           experience={experience}
           engineeringTitledDegree={engineeringTitledDegree}
-          onBack={() => goToReviewStep(4)}
-          onContinue={() => goToReviewStep(6)}
+          transcriptData={transcriptData}
+          onBack={() => goToReviewStep(5)}
+          onContinue={() => goToReviewStep(7)}
         />
-      ) : wizardStep === 4 ? (
+      ) : wizardStep === 5 ? (
         <Step4Risk
           risk={risk}
           assessment={assessment}
@@ -818,41 +976,75 @@ export default function Home() {
           selectedLevels={selectedLevels}
           qualifications={qualifications}
           onBack={() => {
-            setWizardStep(3);
+            setWizardStep(4);
             setSaveMsg(null);
           }}
           onRetry={() => void retryRisk()}
           onCompetenceChange={(c) => void onCompetenceChange(c)}
-          onContinue={() => goToReviewStep(5)}
+          onContinue={() => goToReviewStep(6)}
+          transcriptData={transcriptData}
         />
-      ) : wizardStep === 3 ? (
+      ) : wizardStep === 4 ? (
         <Step3Assessment
+          key={caseId ?? "no-case"}
           assessment={assessment}
           loading={assessLoading}
           error={assessError}
           onBack={() => {
-            setWizardStep(2);
+            setWizardStep(3);
             setSaveMsg(null);
           }}
-          onRetry={() => void goToStep3(true)}
+          onRetry={() => void goToAssessmentStep({ rescore: true })}
+          onRunManualOccupation={(occupationId) =>
+            void goToAssessmentStep({ manualOccupation: occupationId })
+          }
+          onCheckOccupation={
+            caseId ? (occupationId) => checkAssessOccupation(caseId, occupationId) : undefined
+          }
+          onEngineeringManager={
+            caseId
+              ? (answers) =>
+                  answers ? saveEngineeringManagerAnswers(caseId, answers) : getEngineeringManagerCheck(caseId)
+              : undefined
+          }
           onConfirmOccupation={(candidate: AnzscoCandidate) => {
-            void goToStep4(candidate);
+            void goToRiskStep(candidate);
           }}
         />
-      ) : wizardStep === 2 ? (
+      ) : wizardStep === 3 ? (
         <Step2Confirmation
+          caseId={caseId}
           selectedLevels={selectedLevels}
           qualifications={qualifications}
           experience={experience}
           engineeringTitledDegree={engineeringTitledDegree}
           saveMsg={saveMsg}
+          transcriptData={transcriptData}
+          transcriptLoading={transcriptLoading}
+          transcriptError={transcriptError}
+          onRetryTranscriptData={() => void loadTranscriptData("read")}
+          onTranscriptDataChange={setTranscriptData}
+          onCorrect={onCorrectDuration}
           onEngineeringTitledChange={(v) => void onEngineeringTitledChange(v)}
+          onBack={() => {
+            setWizardStep(2);
+            setSaveMsg(null);
+          }}
+          onNext={() => void goToAssessmentStep()}
+          nextBusy={assessLoading}
+        />
+      ) : wizardStep === 2 ? (
+        <Step2TranscriptData
+          data={transcriptData}
+          loading={transcriptLoading}
+          error={transcriptError}
+          onReRead={() => void loadTranscriptData("extract", true)}
+          onSaveOverrides={onSaveTranscriptOverrides}
           onBack={() => {
             setWizardStep(1);
             setSaveMsg(null);
           }}
-          onNext={() => void goToStep3(false)}
-          nextBusy={assessLoading}
+          onNext={() => void goToVerifyStep()}
         />
       ) : (
     <div>
@@ -963,8 +1155,10 @@ export default function Home() {
                 blocked={levelEduBlocked(level)}
                 error={eduErrors[level] ?? null}
                 parseSource={eduParseSources[level] ?? null}
+                levelNotes={eduLevelNotes[level] ?? []}
                 onRead={() => void onReadEducation(level)}
                 onChange={(key, value) => updateQualification(level, key, value)}
+                onFieldFinal={(field, value) => updateFieldFinal(level, field, value)}
               />
             );
           })
@@ -1086,7 +1280,7 @@ export default function Home() {
         <div className="flex items-center justify-end gap-3 border-t border-line pt-5">
           <button
             type="button"
-            onClick={goToStep2}
+            onClick={() => void goToTranscriptStep()}
             className={`rounded-full bg-brand px-6 py-2.5 text-sm font-medium text-white shadow-[0_6px_16px_rgba(146,86,169,0.25)] hover:bg-brand-dark ${FOCUS_RING}`}
           >
             Next
@@ -1102,6 +1296,25 @@ function parseSourceLabel(source: "groq" | "heuristic"): string {
   return source === "heuristic" ? "Heuristic fallback" : "Groq";
 }
 
+/** "Transcript shows a National Diploma, not a Bachelor." One note per award. */
+function levelMismatchNotes(
+  degreeLevel: DegreeLevel,
+  mismatches: { documentType?: string | null; awardName?: string | null }[] | undefined,
+): string[] {
+  if (!Array.isArray(mismatches)) return [];
+  const target = DEGREE_LEVEL_LABELS[degreeLevel].replace(/'s$/, "");
+  const notes = mismatches
+    .map((m) => {
+      const award = (m.awardName ?? "").trim();
+      if (!award) return null;
+      const doc = m.documentType === "CERTIFICATE" ? "Certificate" : "Transcript";
+      const article = /^[aeiou]/i.test(award) ? "an" : "a";
+      return `${doc} shows ${article} ${award}, not a ${target}.`;
+    })
+    .filter((n): n is string => Boolean(n));
+  return [...new Set(notes)];
+}
+
 function EducationBlock({
   degreeLevel,
   value,
@@ -1113,8 +1326,10 @@ function EducationBlock({
   blocked,
   error,
   parseSource,
+  levelNotes,
   onRead,
   onChange,
+  onFieldFinal,
 }: {
   degreeLevel: DegreeLevel;
   value: Bachelors;
@@ -1126,8 +1341,10 @@ function EducationBlock({
   blocked: boolean;
   error: string | null;
   parseSource: "groq" | "heuristic" | null;
+  levelNotes: string[];
   onRead: () => void;
   onChange: <K extends keyof Bachelors>(key: K, value: Bachelors[K]) => void;
+  onFieldFinal: (field: string, value: string | null) => void;
 }) {
   const label = DEGREE_LEVEL_LABELS[degreeLevel];
   const meta = (field: string) => fieldMeta(field);
@@ -1163,6 +1380,18 @@ function EducationBlock({
         }
       />
       {error ? <p role="alert" className="mb-3 text-sm text-[#b45309]">{error}</p> : null}
+      {levelNotes.length ? (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {levelNotes.map((note) => (
+            <span
+              key={note}
+              className="rounded-full bg-surface-tint px-2.5 py-0.5 text-xs font-medium text-ink-muted ring-1 ring-line"
+            >
+              {note}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
           className="sm:col-span-2"
@@ -1196,21 +1425,32 @@ function EducationBlock({
           onPickAlt={(v) => onChange("country", v)}
           onChange={(v) => onChange("country", v)}
         />
+        <label className="block">
+          <span className="mb-1.5 flex items-center gap-2 text-sm font-medium text-ink">
+            Award level
+            {meta(AWARD_LEVEL_FIELD)?.extractedValue ? (
+              <span className="text-xs font-normal text-ink-muted">
+                Detected: {awardOptionLabel(meta(AWARD_LEVEL_FIELD)?.extractedValue as AwardLevel)}
+              </span>
+            ) : null}
+          </span>
+          <select
+            value={meta(AWARD_LEVEL_FIELD)?.finalValue ?? ""}
+            onChange={(e) => onFieldFinal(AWARD_LEVEL_FIELD, e.target.value || null)}
+            className="w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand-ring/40"
+          >
+            <option value="">Detect from degree title</option>
+            {AWARD_LEVEL_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <Field
-          label={
-            value.durationCalculated
-              ? "Study duration (years, calculated)"
-              : "Study duration (years)"
-          }
-          value={value.durationYears != null ? String(value.durationYears) : ""}
-          confidence={meta("durationYears")?.confidence}
-          source={docTypeFor("durationYears")}
-          conflict={Boolean(meta("durationYears")?.alternatives?.length)}
-          alternatives={meta("durationYears")?.alternatives}
-          onPickAlt={(v) => onChange("durationYears", v ? Number(v) : null)}
-          onChange={(v) =>
-            onChange("durationYears", v === "" ? null : Number(v))
-          }
+          label="Field of study"
+          value={meta(FIELD_OF_STUDY_FIELD)?.finalValue ?? ""}
+          onChange={(v) => onFieldFinal(FIELD_OF_STUDY_FIELD, v.trim() ? v : null)}
         />
       </div>
     </section>

@@ -14,7 +14,7 @@ export function CaseWizardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-full bg-background px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-full px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
         <aside className="w-full shrink-0 lg:sticky lg:top-8 lg:w-64">
           <p className="mb-1 text-sm font-medium tracking-wide text-ink-muted">
@@ -34,7 +34,7 @@ export function CaseWizardLayout({
                     state === "active"
                       ? "rounded-2xl border border-brand bg-brand px-4 py-3.5 text-white shadow-[0_8px_24px_rgba(146,86,169,0.28)]"
                       : state === "completed"
-                        ? "rounded-2xl border border-line bg-surface px-4 py-3.5 text-ink"
+                        ? "rounded-2xl border border-line bg-card px-4 py-3.5 text-ink"
                         : "rounded-2xl border border-transparent bg-surface/70 px-4 py-3.5 text-ink-faint"
                   }
                 >

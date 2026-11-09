@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
+import { hasLateralEntryStatus, LateralEntryPill } from "./LateralEntryPill";
 import type {
   AssessmentResult,
   DegreeLevel,
   ExperienceRow,
   RiskAssessmentResult,
+  TranscriptDataSummary,
 } from "@/lib/types";
 import {
   buildConfirmationQualifications,
@@ -24,7 +26,7 @@ import {
 
 const LABEL =
   "text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted";
-const CARD = "rounded-2xl border border-line bg-surface/95 px-4 py-4 sm:px-5";
+const CARD = "rounded-2xl border border-line bg-card px-4 py-4 sm:px-5";
 
 function SectionHeader({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -104,6 +106,16 @@ function competenceClass(competent: boolean): string {
     : "bg-[#f8ecec] text-[#8a3a3a] ring-1 ring-[#e2c4c4]";
 }
 
+/** Applied weight of one score component, from the API scoring breakdown. */
+function weightHint(
+  risk: RiskAssessmentResult,
+  key: "fundamental" | "core" | "historical",
+): string {
+  const c = risk.scoring.components.find((x) => x.key === key);
+  if (!c || !c.used) return "Not used";
+  return `${Math.round(c.appliedWeight * 1000) / 10}% weight`;
+}
+
 /** Build the overall review sentences strictly from data already on screen. */
 function buildOverallReview(
   occupation: { code: string; title: string } | null,
@@ -117,10 +129,10 @@ function buildOverallReview(
 
   if (risk) {
     lines.push(
-      `${name} is rated ${riskBadge(risk.riskLevel).label.toLowerCase()} with ${formatPct(risk.overallPct)} overall alignment (${riskBandRange(risk.riskLevel)} band).`,
+      `${name} is rated ${riskBadge(risk.riskLevel).label.toLowerCase()} with ${formatPct(risk.overallPct)} overall alignment (${riskBandRange(risk.riskLevel, risk.scoring.bands)} band).`,
     );
   } else if (occupation) {
-    lines.push(`${name} has no risk result yet — run Step 4 to complete the review.`);
+    lines.push(`${name} has no risk result yet — run Step 5 to complete the review.`);
   }
 
   if (summary) {
@@ -143,14 +155,17 @@ function buildOverallReview(
     } else {
       lines.push("No matching past cases were found for this occupation.");
     }
-    if (risk.workExperienceBoost && risk.workExperienceDelta > 0) {
-      lines.push(
-        `Related work experience added ${risk.workExperienceDelta} pts (from ${formatPct(risk.overallPctBeforeWork)}).`,
-      );
+    if (risk.workExperienceBoost) {
+      lines.push("Related work experience is noted as context only.");
     }
     lines.push(
       `Competency outcome: ${competenceLabel(risk.competence)} (${risk.competenceSource === "manual" ? "manually set" : "AI suggestion"}).`,
     );
+    if (risk.competenceConflict && risk.competenceSource !== "manual") {
+      lines.push(
+        "The competence suggestion differs from the risk rating; the rating stands and needs assessor review.",
+      );
+    }
   }
   return lines;
 }
@@ -163,6 +178,7 @@ export function Step5FinalReview({
   qualifications,
   experience,
   engineeringTitledDegree,
+  transcriptData = null,
   onBack,
   onContinue,
 }: {
@@ -177,12 +193,13 @@ export function Step5FinalReview({
         degreeTitle: string | null;
         institution: string | null;
         country: string | null;
-        durationYears: number | null;
       }
     >
   >;
   experience: ExperienceRow[];
   engineeringTitledDegree: boolean | null;
+  /** Verify details summary: source of the confirmed study duration. */
+  transcriptData?: TranscriptDataSummary | null;
   onBack: () => void;
   onContinue: () => void;
 }) {
@@ -197,9 +214,14 @@ export function Step5FinalReview({
     [assessment, occupation],
   );
 
+  const lateralView = assessment?.lateralEntry ?? transcriptData?.lateralEntry;
+
   const degreeBlocks = useMemo(
-    () => buildConfirmationQualifications(selectedLevels, qualifications),
-    [selectedLevels, qualifications],
+    () =>
+      buildConfirmationQualifications(selectedLevels, qualifications, undefined, {
+        transcriptData,
+      }),
+    [selectedLevels, qualifications, transcriptData],
   );
 
   const roles = useMemo(
@@ -275,7 +297,7 @@ export function Step5FinalReview({
                     {competenceLabel(risk.competence)}
                   </span>
                   <span className="text-xs tabular-nums text-ink-muted sm:pt-1">
-                    {formatPct(risk.overallPct)} overall alignment
+                    {`${formatPct(risk.overallPct)} overall alignment`}
                   </span>
                 </div>
               ) : null}
@@ -286,7 +308,7 @@ export function Step5FinalReview({
                 Nominated occupation
               </p>
               <p className="mt-2 text-sm text-ink-muted">
-                No occupation selected yet — confirm one in Step 3.
+                No occupation selected yet — confirm one in Step 4.
               </p>
             </div>
           )}
@@ -296,7 +318,7 @@ export function Step5FinalReview({
         <section className={CARD}>
           <SectionHeader
             title="Qualifications"
-            hint="Education details confirmed in Steps 1–2"
+            hint="Education details confirmed in Steps 1–3"
           />
           {degreeBlocks.length ? (
             <div className="space-y-3">
@@ -312,7 +334,19 @@ export function Step5FinalReview({
                     <DetailItem label="Degree title" value={block.degreeTitle} emphasis />
                     <DetailItem label="Institution" value={block.institution} />
                     <DetailItem label="Country" value={block.country} />
-                    <DetailItem label="Duration (years)" value={block.durationYears} />
+                    <DetailItem
+                      label="Duration (years)"
+                      value={
+                        <>
+                          {block.durationYears}
+                          {block.durationSource ? (
+                            <span className="block text-[11px] font-normal text-ink-muted">
+                              {block.durationSource}
+                            </span>
+                          ) : null}
+                        </>
+                      }
+                    />
                   </dl>
                 </div>
               ))}
@@ -325,6 +359,9 @@ export function Step5FinalReview({
               label="Engineering-titled degree"
               value={yesNo(engineeringTitledDegree)}
             />
+            {hasLateralEntryStatus(lateralView) ? (
+              <DetailItem label="Lateral entry" value={<LateralEntryPill view={lateralView} />} />
+            ) : null}
           </dl>
         </section>
 
@@ -374,7 +411,7 @@ export function Step5FinalReview({
         <section className={CARD}>
           <SectionHeader
             title="Assessment summary"
-            hint="ANZSCO subject matching from Step 3 for the nominated occupation"
+            hint="ANZSCO subject matching from Step 4 for the nominated occupation"
           />
           {summary ? (
             <>
@@ -420,10 +457,12 @@ export function Step5FinalReview({
               </div>
               <dl className="mt-3 grid gap-3 border-t border-line pt-3 sm:grid-cols-3">
                 <DetailItem label="Recommended" value={yesNo(summary.recommended)} />
-                <DetailItem
-                  label="Capstone gate (Tier 3)"
-                  value={summary.tier3GateMet ? "Met" : "Not met"}
-                />
+                {summary.track === "engineering_associate" ? null : (
+                  <DetailItem
+                    label="Capstone gate (Tier 3)"
+                    value={summary.tier3GateMet ? "Met" : "Not met"}
+                  />
+                )}
                 <DetailItem
                   label="Work experience boost"
                   value={yesNo(summary.workExperienceBoost)}
@@ -439,7 +478,7 @@ export function Step5FinalReview({
             <EmptyNote
               text={
                 assessment
-                  ? "No Step 3 figures were found for this occupation."
+                  ? "No Step 4 figures were found for this occupation."
                   : "Assessment has not been run yet."
               }
             />
@@ -450,7 +489,7 @@ export function Step5FinalReview({
         <section className={CARD}>
           <SectionHeader
             title="Risk assessment"
-            hint="Alignment score and risk level from Step 4"
+            hint="Risk level from Step 5"
           />
           {risk ? (
             <>
@@ -463,9 +502,10 @@ export function Step5FinalReview({
                     {formatPct(risk.overallPct)}
                   </p>
                   <p className="mt-0.5 text-xs text-ink-muted">
-                    {risk.workExperienceBoost && risk.workExperienceDelta > 0
-                      ? `Includes +${risk.workExperienceDelta} pts work experience (from ${formatPct(risk.overallPctBeforeWork)})`
-                      : "No related work experience boost"}
+                    {riskBandRange(risk.riskLevel, risk.scoring.bands)} band
+                    {risk.workExperienceBoost
+                      ? " · related work experience noted (context only)"
+                      : ""}
                   </p>
                 </div>
                 {badge ? (
@@ -480,21 +520,29 @@ export function Step5FinalReview({
               <div className="mt-4 grid gap-2 sm:grid-cols-3">
                 <MetricTile
                   label="Fundamentals"
-                  value={formatPct(risk.fundamentalPct)}
-                  hint="30% weight"
+                  value={
+                    risk.assessmentFlow === "vocational_units"
+                      ? "—"
+                      : formatPct(risk.fundamentalPct)
+                  }
+                  hint={
+                    risk.assessmentFlow === "vocational_units"
+                      ? "Not used (unit-code assessment)"
+                      : weightHint(risk, "fundamental")
+                  }
                 />
                 <MetricTile
-                  label="Core"
+                  label={risk.assessmentFlow === "vocational_units" ? "Core units" : "Core"}
                   value={formatPct(risk.corePct)}
-                  hint="50% weight"
+                  hint={weightHint(risk, "core")}
                 />
                 <MetricTile
                   label="Historical"
                   value={formatPct(risk.historicalPct)}
                   hint={
                     risk.historical.totalCases > 0
-                      ? `${risk.historical.positive}/${risk.historical.totalCases} positive · 20% weight`
-                      : "No cases · 20% weight"
+                      ? `${risk.historical.positive}/${risk.historical.totalCases} positive · ${weightHint(risk, "historical")}`
+                      : "No cases · not used"
                   }
                 />
               </div>
@@ -605,7 +653,7 @@ export function Step5FinalReview({
               ) : null}
             </>
           ) : (
-            <EmptyNote text="Risk assessment has not been run yet — go back to Step 4." />
+            <EmptyNote text="Risk assessment has not been run yet — go back to Step 5." />
           )}
         </section>
 
@@ -627,8 +675,8 @@ export function Step5FinalReview({
                   </p>
                   <p className="text-xs text-ink-muted">
                     {risk.competenceSource === "manual"
-                      ? "Manually set by you in Step 4"
-                      : "AI suggestion — change it in Step 4 if needed"}
+                      ? "Manually set by you in Step 5"
+                      : "AI suggestion — change it in Step 5 if needed"}
                   </p>
                 </div>
               </div>
@@ -660,7 +708,7 @@ export function Step5FinalReview({
               ))}
             </ul>
           ) : (
-            <EmptyNote text="Complete Steps 3 and 4 to generate the overall review." />
+            <EmptyNote text="Complete Steps 4 and 5 to generate the overall review." />
           )}
         </section>
       </div>

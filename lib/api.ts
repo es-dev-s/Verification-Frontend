@@ -245,14 +245,125 @@ export async function confirmCase(
   });
 }
 
+/**
+ * Score the saved subjects (never re-extracts transcripts). `rescore` skips
+ * the cached result; `manualOccupation` (manual-review cases) saves the
+ * assessor-selected occupation id / ANZSCO and scores only it (null clears).
+ */
 export async function runAssessment(
   caseId: string,
-  opts?: { force?: boolean },
+  opts?: { rescore?: boolean; manualOccupation?: string | null },
 ): Promise<import("./types").AssessmentResult> {
+  const body: { rescore: boolean; manualOccupation?: string | null } = {
+    rescore: opts?.rescore ?? false,
+  };
+  if (opts?.manualOccupation !== undefined) body.manualOccupation = opts.manualOccupation;
   return api(`/cases/${caseId}/assess`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Check one ANZSCO on the saved subjects (read-only: nothing is saved). */
+export async function checkAssessOccupation(
+  caseId: string,
+  occupation: string,
+): Promise<import("./types").OccupationCheck> {
+  return api(`/cases/${caseId}/assess/check`, {
+    method: "POST",
+    body: JSON.stringify({ occupation }),
+  });
+}
+
+/** Engineering Manager check with the saved answers (read-only). */
+export async function getEngineeringManagerCheck(
+  caseId: string,
+): Promise<import("./types").EngineeringManagerCheck> {
+  return api(`/cases/${caseId}/assess/engineering-manager`);
+}
+
+/** Save the Engineering Manager answers and return the check. */
+export async function saveEngineeringManagerAnswers(
+  caseId: string,
+  answers: import("./types").EmAnswers,
+): Promise<import("./types").EngineeringManagerCheck> {
+  return api(`/cases/${caseId}/assess/engineering-manager`, {
+    method: "PUT",
+    body: JSON.stringify(answers),
+  });
+}
+
+/** Occupations an assessor can pick for a manual-review case. */
+export async function getAssessOccupations(): Promise<
+  import("./types").ManualOccupationOption[]
+> {
+  return api("/assess/occupations");
+}
+
+/** Transcript data summary (no LLM call). Subjects are not included. */
+export async function getTranscriptData(
+  caseId: string,
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/transcript-data`);
+}
+
+/** Read subjects from the transcripts (reuses saved subjects unless force). */
+export async function extractTranscriptData(
+  caseId: string,
+  opts?: { force?: boolean },
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/transcript-data`, {
     method: "POST",
     body: JSON.stringify({ force: opts?.force ?? false }),
   });
+}
+
+/** Save assessor values for one level; null clears a value. */
+export async function saveTranscriptOverrides(
+  caseId: string,
+  body: { degreeLevel: import("./types").DegreeLevel } & Partial<
+    import("./types").TranscriptOverrides
+  >,
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/transcript-data/overrides`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Lateral entry: answer the question ("answer") or the re-confirmation ("confirm"). */
+export async function answerLateralEntry(
+  caseId: string,
+  question: "answer" | "confirm",
+  answer: "yes" | "no",
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/lateral-entry`, {
+    method: "PUT",
+    body: JSON.stringify({ question, answer }),
+  });
+}
+
+/** Lateral entry: upload the earlier study's transcript (kept apart from the bachelor's own). */
+export async function uploadPriorStudyTranscript(
+  caseId: string,
+  file: File,
+): Promise<{ documentId: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("type", "TRANSCRIPT");
+  form.append("degreeLevel", "bachelor");
+  const qs = new URLSearchParams({ type: "TRANSCRIPT", degreeLevel: "bachelor", role: "prior_study" });
+  return api(`/cases/${caseId}/documents?${qs.toString()}`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+/** Lateral entry: read the earlier study's subjects once its transcript is processed. */
+export async function readPriorStudySubjects(
+  caseId: string,
+): Promise<import("./types").TranscriptDataSummary> {
+  return api(`/cases/${caseId}/lateral-entry/prior-subjects`, { method: "POST" });
 }
 
 export async function getAssessment(

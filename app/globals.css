@@ -17,6 +17,9 @@
   --surface: #ffffff;
   --surface-subtle: #fdfcfa;
   --surface-tint: #f9f7f2;
+  /* Soft warm, slightly translucent fills so the page glow shows through (inputs, menus and popups stay solid --surface) */
+  --card: rgb(255 253 249 / 0.85);
+  --nav: rgb(255 252 247 / 0.7);
 
   /* Ink & lines */
   --ink: #241f2a;
@@ -45,6 +48,8 @@
   --color-surface: var(--surface);
   --color-surface-subtle: var(--surface-subtle);
   --color-surface-tint: var(--surface-tint);
+  --color-card: var(--card);
+  --color-nav: var(--nav);
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-ink-faint: var(--ink-faint);
@@ -58,7 +63,56 @@
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+}
+
+/* Page backdrop: soft brand-amber (--brand #e6a35c = rgb 230 163 92) glow from the four corners over the cream base.
+   Fixed layer behind all content; cards and step panels keep their own backgrounds. */
+body::before {
+  content: "";
+  position: fixed;
+  /* Oversized (150% of the viewport) so the drift never shows an edge. Fixed boxes add no scroll area. */
+  inset: -25%;
+  z-index: -1;
+  pointer-events: none;
+  /* Same glows as before, re-expressed for the larger layer: viewport corners sit at 16.67% / 83.33%,
+     and 80%x70% / 70%x60% of the viewport become 53.3%x46.7% / 46.7%x40% of the layer. */
+  background:
+    radial-gradient(ellipse 53.3% 46.7% at 16.67% 16.67%, rgb(230 163 92 / 0.32), transparent 75%),
+    radial-gradient(ellipse 46.7% 40% at 83.33% 16.67%, rgb(230 163 92 / 0.20), transparent 75%),
+    radial-gradient(ellipse 46.7% 40% at 16.67% 83.33%, rgb(230 163 92 / 0.18), transparent 75%),
+    radial-gradient(ellipse 53.3% 46.7% at 83.33% 83.33%, rgb(230 163 92 / 0.30), transparent 75%);
+  will-change: transform;
+  animation: page-glow-drift 26s ease-in-out infinite alternate;
+}
+
+/* Slow drift of the corner glows (transform only: composited, no repaint). Max shift 6% of the layer (~9% of the screen). */
+@keyframes page-glow-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(6%, 3%, 0) scale(1.04);
+  }
+  66% {
+    transform: translate3d(-3%, 6%, 0) scale(1.02);
+  }
+  100% {
+    transform: translate3d(-6%, -3%, 0) scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+    will-change: auto;
+  }
+}
+
+@media print {
+  body::before {
+    display: none;
+  }
 }

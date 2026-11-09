@@ -14,7 +14,7 @@ export const BTN_PRIMARY = `rounded-full bg-brand px-4 py-2 text-sm font-medium 
 export const BTN_SECONDARY = `inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-1.5 text-sm font-medium text-ink transition hover:border-brand-muted hover:bg-brand-soft/50 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`;
 export const BTN_GHOST_DANGER = `rounded-full px-2 py-1 text-xs font-medium text-ink-muted transition hover:bg-[#f8ecec] hover:text-[#8a3a3a] disabled:opacity-50 ${FOCUS_RING}`;
 export const CARD =
-  "mb-5 rounded-2xl border border-line bg-surface/95 p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)] sm:p-6";
+  "mb-5 rounded-2xl border border-line bg-card p-5 shadow-[0_1px_0_rgba(36,31,42,0.04)] sm:p-6";
 
 export function SectionHeader({
   title,
